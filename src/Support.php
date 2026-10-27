@@ -137,6 +137,53 @@ final class Support
         return $default;
     }
 
+    /**
+     * Like pick(), but accepts dot paths for nested fields, e.g. "enforcement.block.addedAt".
+     *
+     * @param array<int,string> $paths
+     */
+    public static function pickPath(array $row, array $paths, string $default = ''): string
+    {
+        foreach ($paths as $path) {
+            $node = $row;
+            foreach (explode('.', $path) as $segment) {
+                if (!is_array($node) || !array_key_exists($segment, $node)) {
+                    $node = null;
+                    break;
+                }
+                $node = $node[$segment];
+            }
+            if ($node === null || $node === '' || is_array($node)) {
+                continue;
+            }
+            return trim(is_bool($node) ? ($node ? 'true' : 'false') : (string) $node);
+        }
+        return $default;
+    }
+
+    /**
+     * US-style date and time (MM/DD/YYYY hh:mm:ss AM/PM) in the server timezone.
+     * Returns the input unchanged when it cannot be parsed.
+     */
+    public static function usDateTime(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        try {
+            if (ctype_digit($value)) {
+                $n = (int) $value;
+                $date = new \DateTimeImmutable('@' . $n);
+            } else {
+                $date = new \DateTimeImmutable($value);
+            }
+        } catch (\Exception) {
+            return $value;
+        }
+        return $date->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('m/d/Y h:i:s A');
+    }
+
     public static function redact(string $text, string $secret): string
     {
         if ($secret !== '') {

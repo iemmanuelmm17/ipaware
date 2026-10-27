@@ -36,8 +36,6 @@ export function create(ctx) {
               <span class="spacer"></span>
               <button class="btn" type="button" data-test>${ui.icon('zap')} ${testing ? 'Testing…' : 'Test connection'}</button>
             </div>
-            ${testResult ? `<div class="notice ${testResult.ok ? '' : 'notice--danger'}">${ui.icon(testResult.ok ? 'check-circle' : 'alert')}
-              <div><strong>${ui.escapeHtml(testResult.message)}</strong>${testResult.detail ? `<br><span class="mono">${ui.escapeHtml(testResult.detail)}</span>` : ''}</div></div>` : ''}
           </form>
         </section>
 
@@ -126,8 +124,10 @@ export function create(ctx) {
       try {
         const response = await ctx.api.test();
         testResult = { ok: true, message: response.test?.message || response.message, detail: `HTTP ${response.test?.status} · ${response.test?.latencyMs} ms` };
+        ctx.ui.toast({ title: 'Connection test passed', message: `${testResult.message} (${testResult.detail})` }, 'success');
       } catch (e) {
         testResult = { ok: false, message: e.message, detail: '' };
+        ctx.ui.toast({ title: 'Connection test failed', message: e.message }, 'error');
       } finally { testing = false; render(); }
     });
     el.querySelector('[data-chunk]').addEventListener('click', () => {
