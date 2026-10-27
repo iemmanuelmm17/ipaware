@@ -1,0 +1,13 @@
+# Local secrets and runtime state - never commit these
+.env.local
+.env.*.local
+data/*
+!data/.gitkeep
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
+node_modules/
+vendor/
+.idea/
+.vscode/

@@ -1,0 +1,37 @@
+# Apache 2.4 hardening for IPAware Console
+# The PHP access guard is authoritative; these rules add defense in depth.
+
+Options -Indexes -MultiViews
+DirectoryIndex index.php index.html
+
+<FilesMatch "^(\.env|\.env\..*|\.gitignore|\.git.*|composer\.(json|lock)|README\.md|web\.config)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Block direct access to private directories and source files.
+    RewriteRule ^(src|data|dev|templates|assets)/ - [F,L,NC]
+    RewriteRule ^(.*/)?\. - [F,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Optional: repeat the allowlist at web-server level for defense in depth.
+# Uncomment and edit (must be kept in sync with ADMIN_ALLOWED_IPS in .env):
+# <RequireAny>
+#     Require ip 203.0.113.10
+#     Require ip 198.51.100.25
+# </RequireAny>
+
+# PHP 8.2 recommended settings (remove if your host forbids php_flag/php_value)
+<IfModule mod_php.c>
+    php_flag display_errors off
+    php_flag log_errors on
+    php_value session.cookie_httponly 1
+    php_value session.use_strict_mode 1
+</IfModule>

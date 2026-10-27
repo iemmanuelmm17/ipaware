@@ -1,0 +1,2 @@
+# JS/CSS is served through asset.php so the PHP IP allowlist is enforced.
+Require all denied
