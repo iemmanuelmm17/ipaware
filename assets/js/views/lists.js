@@ -39,9 +39,10 @@ function renderTable(ctx, el, kind) {
   if (q && q.value !== ctx.store.state.query) q.value = ctx.store.state.query;
   ctx.table.renderTable(el.querySelector('[data-table]'), {
     rows,
-    columns: ctx.shared.rowColumns(ctx),
+    columns: ctx.shared.rowColumns(ctx, { showType: kind === 'allowed' }),
     actions: ctx.shared.rowActions(ctx),
     onAction: (id, row) => ctx.shared.handleRowAction(ctx, id, row),
+    onRowClick: (row) => ctx.shared.showRecord(ctx, row),
     onSort: (key) => { ctx.store.setSort(key); renderTable(ctx, el, kind); },
     sort: ctx.store.state.sort,
     chunk: ctx.store.state.chunkSize,

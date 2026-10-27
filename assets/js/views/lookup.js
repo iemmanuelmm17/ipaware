@@ -75,6 +75,7 @@ export function create(ctx) {
     } catch (e) {
       error = e.message;
       result = null;
+      ctx.ui.toast({ title: 'Lookup failed', message: e.message }, 'error');
     } finally {
       loading = false;
       render();
@@ -96,7 +97,7 @@ export function create(ctx) {
       return;
     }
     if (error) {
-      host.innerHTML = `<div class="notice notice--danger">${ui.icon('alert')}<div><strong>Lookup failed</strong><br>${ui.escapeHtml(error)}</div></div>`;
+      host.innerHTML = `<div class="card">${ui.emptyState('Lookup failed', error, 'alert')}</div>`;
       return;
     }
     if (!result) {

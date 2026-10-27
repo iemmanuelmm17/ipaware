@@ -43,6 +43,7 @@ let fallbackTimer = null;
 let stream = null;
 let lastError = null;
 let lastRefreshAt = 0;
+let lastUpstreamErrorKey = '';
 
 const ctx = {
   get cfg() { return api.config; },
@@ -133,7 +134,8 @@ async function navigate(route, options = {}) {
       const factory = await routes[route].load();
       mounted.set(route, factory(ctx));
     } catch (error) {
-      viewEl.innerHTML = `<div class="notice notice--danger">${ui.icon('alert')}<div><strong>Could not load this tab.</strong><br>${ui.escapeHtml(error.message)}</div></div>`;
+      ui.toast({ title: 'Could not load this tab', message: error.message }, 'error');
+      viewEl.innerHTML = ui.emptyState('Could not load this tab', error.message, 'alert');
       return;
     }
   }
@@ -142,7 +144,8 @@ async function navigate(route, options = {}) {
   try {
     mounted.get(route).mount(viewEl);
   } catch (error) {
-    viewEl.innerHTML = `<div class="notice notice--danger">${ui.icon('alert')}<div><strong>Tab error.</strong><br>${ui.escapeHtml(error.message)}</div></div>`;
+    ui.toast({ title: 'Tab error', message: error.message }, 'error');
+    viewEl.innerHTML = ui.emptyState('Tab error', error.message, 'alert');
   }
   updateChrome();
 }
@@ -159,6 +162,12 @@ async function refresh({ silent = false, reason = 'manual', force = false } = {}
     const data = await api.snapshot(controller.signal);
     store.setSnapshot(data, { silent: true });
     if (data.meta?.config) api.updateConfig(data.meta.config);
+    const upstreamErrors = Object.values(store.state.meta?.errors || {});
+    const errorKey = upstreamErrors.join(' | ');
+    if (errorKey && errorKey !== lastUpstreamErrorKey) {
+      ui.toast({ title: 'Upstream error', message: upstreamErrors[0] }, 'error');
+    }
+    lastUpstreamErrorKey = errorKey;
     lastError = store.state.error;
     lastRefreshAt = Date.now();
     renderActive();
@@ -452,7 +461,7 @@ function bindChrome() {
         'R                -  refresh lists now',
         '?                -  this help',
         'Arrow keys       -  move between tabs when a tab is focused',
-        'Escape           -  close a dialog or palette',
+        'Escape           -  close a toast, dialog or palette',
       ].join('\n'));
     }
   });

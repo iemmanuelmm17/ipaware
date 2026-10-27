@@ -97,9 +97,10 @@ export function create(ctx) {
     const rows = store.rows({ kind: store.state.kind, query: store.state.query, sort: store.state.sort });
     ctx.table.renderTable(el.querySelector('[data-table]'), {
       rows,
-      columns: ctx.shared.rowColumns(ctx),
+      columns: ctx.shared.rowColumns(ctx, { showType: store.state.kind === 'all' }),
       actions: ctx.shared.rowActions(ctx),
       onAction: (id, row) => ctx.shared.handleRowAction(ctx, id, row),
+      onRowClick: (row) => ctx.shared.showRecord(ctx, row),
       onSort: (key) => { store.setSort(key); update(); },
       sort: store.state.sort,
       chunk: store.state.chunkSize,

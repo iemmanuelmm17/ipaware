@@ -24,16 +24,19 @@ export function parseDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** US format for every date and time in the console, e.g. 10/27/2026, 6:20:17 AM (browser time zone). */
 export function fmtDate(value) {
   const d = parseDate(value);
   if (!d) return value ? String(value) : '—';
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric', month: 'short', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
     }).format(d);
   } catch {
-    return d.toISOString().slice(0, 16).replace('T', ' ');
+    const pad = (n) => String(n).padStart(2, '0');
+    const h = d.getHours() % 12 || 12;
+    return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}, ${h}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
   }
 }
 
@@ -58,25 +61,59 @@ export function badge(text, tone = 'muted') {
   return `<span class="badge badge--${tone}">${escapeHtml(text)}</span>`;
 }
 
-export function toast(input, tone = 'info', timeout = 4200) {
+const TOAST_ICONS = { info: 'info', success: 'check-circle', warning: 'alert', error: 'ban' };
+const TOAST_LIMIT = 5;
+
+function toneOf(tone) {
+  if (tone === 'danger') return 'error';
+  return TOAST_ICONS[tone] ? tone : 'info';
+}
+
+/**
+ * Every notification goes through here. Errors stay on screen until dismissed
+ * (click, the × button, or Esc); other tones hide automatically.
+ */
+export function toast(input, tone = 'info', timeout) {
   const payload = typeof input === 'string' ? { title: input } : (input || {});
   const host = qs('#toasts');
-  if (!host) return;
-  const tones = { info: 'info', success: 'check-circle', warning: 'alert', error: 'ban' };
+  if (!host) return null;
+  const kind = toneOf(payload.tone || tone);
+  const ms = payload.timeout ?? timeout ?? (kind === 'error' ? 0 : 4200);
   const el = document.createElement('div');
-  el.className = `toast tone-${payload.tone || tone}`;
-  el.innerHTML = `${icon(tones[payload.tone || tone] || 'info')}<div><strong>${escapeHtml(payload.title || '')}</strong>${
+  el.className = `toast tone-${kind}`;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  el.innerHTML = `${icon(TOAST_ICONS[kind])}<div><strong>${escapeHtml(payload.title || '')}</strong>${
     payload.message ? `<p>${escapeHtml(payload.message)}</p>` : ''
-  }</div>`;
+  }</div><button class="toast__close" type="button" aria-label="Close notification" title="Close (Esc)">${icon('x')}</button>`;
+  const open = [...host.children].filter((node) => !node.dataset.closing);
+  while (open.length >= TOAST_LIMIT) dismissToast(open.shift());
   host.appendChild(el);
-  const remove = () => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(6px)';
-    setTimeout(() => el.remove(), 180);
-  };
-  el.addEventListener('click', remove);
-  setTimeout(remove, payload.timeout ?? timeout);
+  el._timer = ms > 0 ? setTimeout(() => dismissToast(el), ms) : null;
+  el.addEventListener('click', () => dismissToast(el));
+  return el;
 }
+
+function dismissToast(el) {
+  if (!el || el.dataset.closing) return;
+  el.dataset.closing = '1';
+  clearTimeout(el._timer);
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(6px)';
+  setTimeout(() => el.remove(), 180);
+}
+
+export function dismissToasts() {
+  qsa('#toasts .toast').forEach(dismissToast);
+}
+
+// Esc closes visible toasts. Dialogs and the palette handle Esc themselves, so they win while open.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (!qs('#toasts .toast:not([data-closing])')) return;
+  if (qs('.modal-backdrop') || qs('.palette')) return;
+  event.preventDefault();
+  dismissToasts();
+});
 
 function closeOnEscape(backdrop, onClose) {
   const handler = (event) => {
@@ -189,6 +226,106 @@ export function jsonDialog(title, data) {
       backdrop.remove();
     }
   });
+}
+
+const ISO_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+const DATE_KEY_RE = /(^|[_.])(at|seen|decided|expires|until|created|updated|time|date|timestamp|ts)$/i;
+
+/** "enforcedByServerCount" -> "Enforced by server count" */
+export function humanizeKey(key) {
+  const spaced = String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_.-]+/g, ' ').trim().toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function scalarHtml(key, value) {
+  if (value === null || value === undefined || value === '') return '<span class="muted">—</span>';
+  if (typeof value === 'boolean') return badge(value ? 'Yes' : 'No', value ? 'green' : 'muted');
+  if (typeof value === 'number') return escapeHtml(String(value));
+  const text = String(value);
+  if ((ISO_RE.test(text) || (DATE_KEY_RE.test(key) && /^\d{10,13}$/.test(text))) && parseDate(text)) {
+    return `<span title="${escapeHtml(text)}">${escapeHtml(fmtDate(text))}</span>`;
+  }
+  return escapeHtml(text);
+}
+
+function group(title, inner) {
+  return `<div class="detail-group"><h4>${escapeHtml(title)}</h4>${inner}</div>`;
+}
+
+/** Renders any JSON-like record: scalars as label/value rows, nested objects as groups. */
+export function renderRecordFields(record, depth = 0) {
+  const scalars = [];
+  const blocks = [];
+  Object.entries(record || {}).forEach(([key, value]) => {
+    const label = humanizeKey(key);
+    if (isPlainObject(value) && Object.keys(value).length) {
+      blocks.push(group(label, renderRecordFields(value, depth + 1)));
+    } else if (Array.isArray(value) && value.some((item) => item !== null && typeof item === 'object')) {
+      blocks.push(group(label, value.map((item, i) => (
+        item !== null && typeof item === 'object'
+          ? group(`${label} ${i + 1}`, renderRecordFields(item, depth + 2))
+          : `<p class="mono">${escapeHtml(String(item))}</p>`
+      )).join('')));
+    } else if (Array.isArray(value)) {
+      scalars.push([label, value.length
+        ? `<span class="chip-list">${value.map((v) => `<span class="chip mono">${escapeHtml(String(v))}</span>`).join('')}</span>`
+        : '<span class="muted">—</span>']);
+    } else {
+      scalars.push([label, scalarHtml(key, value)]);
+    }
+  });
+  const table = scalars.length
+    ? `<dl class="kv detail-kv">${scalars.map(([label, html]) => `<dt>${escapeHtml(label)}</dt><dd>${html}</dd>`).join('')}</dl>`
+    : '';
+  return table + blocks.join('');
+}
+
+/**
+ * Popup for one table row: a summary on top, then every field of the full record.
+ * actions: [{ label, icon, run }] – each closes the popup and then runs.
+ */
+export function recordDialog({ title, subtitle = '', summary = [], record = {}, actions = [] } = {}) {
+  const root = qs('#modal-root');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const json = JSON.stringify(record ?? {}, null, 2);
+  backdrop.innerHTML = `
+    <div class="modal modal--wide modal--detail" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="modal-head">${icon('eye')}<div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="muted tiny">${escapeHtml(subtitle)}</p>` : ''}</div></div>
+      <div class="modal-body">
+        <section class="detail-section"><h3>Summary</h3>
+          <dl class="kv detail-kv">${summary.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${scalarHtml(label, value)}</dd>`).join('')}</dl>
+        </section>
+        <section class="detail-section"><h3>Full record</h3>${renderRecordFields(record) || '<p class="muted">No data</p>'}</section>
+      </div>
+      <div class="modal-foot">
+        ${actions.map((a, i) => `<button class="btn" type="button" data-act="custom-${i}">${a.icon ? icon(a.icon) : ''} ${escapeHtml(a.label)}</button>`).join('')}
+        <button class="btn" type="button" data-act="copy-json">${icon('copy')} Copy JSON</button>
+        <button class="btn btn--primary" type="button" data-act="close">Close</button>
+      </div>
+    </div>`;
+  root.appendChild(backdrop);
+  const close = () => { backdrop._cleanup?.(); backdrop.remove(); };
+  closeOnEscape(backdrop, () => backdrop.remove());
+  backdrop.addEventListener('click', async (event) => {
+    if (event.target === backdrop || event.target.closest('[data-act="close"]')) return close();
+    if (event.target.closest('[data-act="copy-json"]')) {
+      const ok = await copy(json);
+      return toast(ok ? 'JSON copied to clipboard' : 'Copy failed', ok ? 'success' : 'error', 1800);
+    }
+    const custom = event.target.closest('[data-act^="custom-"]');
+    if (custom) {
+      const action = actions[Number(custom.dataset.act.slice(7))];
+      close();
+      try { await action?.run?.(); } catch (error) { toast({ title: 'Action failed', message: error.message }, 'error'); }
+    }
+  });
+  qs('[data-act="close"]', backdrop).focus();
+  return backdrop;
 }
 
 export async function copy(text) {

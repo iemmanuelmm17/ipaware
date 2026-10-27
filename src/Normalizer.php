@@ -126,9 +126,14 @@ final class Normalizer
             }
         }
         $ip = strtolower(trim($ip));
-        $created = self::time(Support::pick($row, ['created_at', 'createdAt', 'created', 'timestamp', 'time', 'date', 'first_seen', 'firstSeen', 'added_at', 'inserted_at', 'start_at']));
-        $expires = self::time(Support::pick($row, ['expires_at', 'expiresAt', 'expires', 'until', 'expiration', 'valid_until', 'expire_at', 'stop_at']));
-        $reason = Support::pick($row, ['reason', 'message', 'description', 'detail', 'note', 'comment', 'scenario', 'type', 'action', 'decision', 'label']);
+        // Nested CrowdSec/cluster-style records: enforcement.block.addedAt, evidence.explanation, ...
+        $created = self::time(Support::pick($row, ['created_at', 'createdAt', 'created', 'timestamp', 'time', 'date', 'first_seen', 'firstSeen', 'added_at', 'addedAt', 'inserted_at', 'start_at'])
+            ?: Support::pickPath($row, ['enforcement.block.addedAt', 'firstDecidedAt']));
+        $expires = self::time(Support::pick($row, ['expires_at', 'expiresAt', 'expires', 'until', 'expiration', 'valid_until', 'expire_at', 'stop_at'])
+            ?: Support::pickPath($row, ['enforcement.block.expiresAt']));
+        $reason = Support::pick($row, ['reason', 'message', 'description', 'detail', 'note', 'comment', 'scenario', 'type', 'action', 'decision', 'label'])
+            ?: Support::pickPath($row, ['enforcement.block.reason', 'evidence.reason']);
+        $explanation = Support::pickPath($row, ['evidence.explanation', 'explanation', 'reasonExplanation']) ?: $reason;
         $comment = Support::pick($row, ['comment', 'note', 'description', 'message', 'reason', 'label']);
         return [
             'id' => (string) (Support::pick($row, ['id', 'uuid', 'decision_id', '_id']) ?: substr(hash('sha256', $kind . ':' . $ip), 0, 20)),
@@ -136,14 +141,17 @@ final class Normalizer
             'ip' => $ip,
             'cidr' => Support::cidr($ip),
             'reason' => $reason,
+            'explanation' => $explanation,
             'comment' => $comment,
             'scenario' => Support::pick($row, ['scenario', 'rule', 'threat', 'category', 'event_type']),
-            'source' => Support::pick($row, ['source', 'origin', 'reporter', 'source_name', 'created_by', 'bouncer', 'instance', 'by']),
+            'source' => Support::pick($row, ['source', 'origin', 'reporter', 'source_name', 'created_by', 'bouncer', 'instance', 'by'])
+                ?: Support::pickPath($row, ['evidence.originServer']),
             'action' => Support::pick($row, ['action', 'type', 'decision', 'verdict', 'operation', 'kind']),
             'created' => $created,
             'expires' => $expires,
             'ttl' => Support::pick($row, ['duration', 'ttl', 'remaining', 'ban_duration', 'valid_for']),
-            'origin' => Support::pick($row, ['origin', 'source', 'cluster', 'node']),
+            'origin' => Support::pick($row, ['origin', 'source', 'cluster', 'node'])
+                ?: Support::pickPath($row, ['evidence.originServer']),
             'raw' => $row,
         ];
     }

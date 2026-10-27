@@ -9,7 +9,7 @@ function dateValue(value) {
 function haystack(row) {
   return [
     row.ip, row.cidr, row.reason, row.comment, row.scenario,
-    row.source, row.origin, row.action, row.kind, row.ttl, row.created, row.expires,
+    row.source, row.origin, row.action, row.kind, row.ttl, row.created, row.expires, row.explanation,
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -41,7 +41,7 @@ function matches(row, query) {
 const comparators = {
   ip: (a, b) => String(a.ip || '').localeCompare(String(b.ip || ''), undefined, { numeric: true }),
   kind: (a, b) => String(a.kind || '').localeCompare(String(b.kind || '')),
-  reason: (a, b) => String(a.reason || a.comment || '').localeCompare(String(b.reason || b.comment || '')),
+  reason: (a, b) => String(a.explanation || a.reason || a.comment || '').localeCompare(String(b.explanation || b.reason || b.comment || '')),
   source: (a, b) => String(a.source || a.origin || '').localeCompare(String(b.source || b.origin || '')),
   created: (a, b) => dateValue(a.created) - dateValue(b.created),
   expires: (a, b) => dateValue(a.expires) - dateValue(b.expires),
