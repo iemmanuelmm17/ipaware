@@ -2,14 +2,15 @@
 
 A single-page PHP 8.2 + vanilla JavaScript console for the IPAware firewall API.
 
-- **Single page with tabs** — Overview, Blocked IPs, Whitelist, IP lookup, Live events, Commands, Settings. Switching tabs changes the URL hash (`#/decisions`) but never reloads the page.
+- **Single page with tabs** — Overview, Blocked IPs, Whitelist, IP lookup, Live events and Settings. Switching tabs changes the URL hash (`#/decisions`) but never reloads the page.
 - **Lazy loading** — every tab's JavaScript is a separate ES module that is `import()`-ed only the first time you open it; tables render rows in chunks via `IntersectionObserver` as you scroll (30 rows at a time by default), with a manual **Load more** fallback.
 - **Read events to update** — `stream.php` is a Server-Sent Events endpoint. It tails `data/events.jsonl` and, every `SSE_POLL_SECONDS`, re-reads decisions + allow list, diffs them, and pushes `sync`, `activity`, `notice` and `heartbeat` events to the browser. Lists update without a full page refresh.
-- **Auto-refresh options** — Off / 15s / 30s / 60s / 5min in the toolbar, plus a **Live** SSE switch. Polling continues as a fallback when the stream is unavailable or the tab is hidden; hidden tabs pause refreshes.
+- **Auto-refresh options** — Off / 15s / 30s / 60s / 5min in the toolbar, plus a **Live** SSE switch when the server supports it. Polling is the fallback; refreshes pause while the tab is hidden.
 - **Search for an IP** — global search in the header filters every table (supports `ip:`, `kind:`, `reason:`, `source:`, `scenario:` field filters); pressing Enter on an IP jumps to IP Lookup.
 - **Block / unblock / allow-list** — row actions and quick-action dialogs call the upstream API. Destructive actions ask for confirmation.
-- **Search commands** — the **Commands** tab has a searchable, copyable reference for every API call (curl / PowerShell / raw HTTP), and `Ctrl+K` / `Cmd+K` opens a command palette that searches commands, actions and tabs. Commands always use a `$APIKey` placeholder — the key is never written into the page.
-- **Tables** — one combined table on Overview plus dedicated blocked and whitelist tables. The main table shows IP, when it was added (US date and time) and the explanation of the block. Click a row (or press Enter on it) to open a popup with every field of the upstream record.
+- **Quick actions** — `Ctrl+K` / `Cmd+K` searches navigation and common actions.
+- **Tables** — one combined table on Overview plus dedicated blocked and whitelist tables. The main table shows IP, when it was added (US date and time) and the explanation of the block. The whitelist also shows source, comment, added by, country, city, domain, added and expiry dates. Click a row or its IP (or focus the row and press Enter/Space) to open the complete upstream record, including nested fields. The popup also has a raw JSON viewer and copy button.
+- **IP lookup** — groups the complete upstream record into readable sections, including scores, activity, local enforcement, history, location and risk. Null, false, zero and empty values remain visible; the full untruncated response is available as raw JSON. A historical score is not treated as a current block.
 - **Notifications** — every message (success, failure, error, warning) is a toast. Errors stay until you close them; press **Esc** (or click the toast) to close toasts. All dates and times use US format (MM/DD/YYYY, 12-hour clock).
 - **Export to Excel** — `export.php` builds a real multi-sheet `.xlsx` (All IPs / Blocked / Whitelist / Summary) using PHP's `ZipArchive`. If the `zip` extension is missing it automatically falls back to an Excel-compatible UTF-8 CSV. CSV is also available directly.
 - **API key field** — Settings → API key. The key is stored in the PHP session (never in `localStorage`, never returned to the browser, never logged). An `API_KEY` value in `.env.local` can be used as a fallback.
@@ -33,8 +34,7 @@ assets/js/api.js           fetch + EventSource client
 assets/js/store.js         state, filters, sorting
 assets/js/table.js         lazy table renderer
 assets/js/ui.js            helpers, toasts, dialogs
-assets/js/commands.js      API command reference generator
-assets/js/palette.js       Ctrl+K command palette
+assets/js/palette.js       Ctrl+K quick actions
 assets/js/views/*.js       one module per tab (loaded on demand)
 src/                       PHP classes (Env, Config, AccessGuard, App, HttpClient,
                            Upstream, DemoUpstream, Normalizer, EventLog, Xlsx, Exporter)
@@ -44,6 +44,7 @@ templates/app.html         HTML template shared by PHP and the optional preview
 .env.local                 (you create it; git-ignored) real secrets / overrides
 dev/router.php             router for PHP's built-in server (enforces the allowlist)
 dev/preview.mjs            optional Node mock backend — preview only, not needed to deploy
+tests/                     CLI regression tests and sanitized decision, lookup and allow-list fixtures
 data/                      runtime state (git-ignored): events.jsonl, sessions, demo-state.json
 ```
 
@@ -88,7 +89,7 @@ ALLOWLIST_DELETE_METHOD=DELETE
 ```
 
 If `API_BASE_URL` already includes `/ipaware`, change the endpoints to `/decisions`, `/ip/...`, etc.
-`AUTH_SCHEME=raw` sends `Authorization: <key>` (matching the first curl example you gave, which omitted `Bearer`); the default `Bearer` matches the rest.
+`AUTH_SCHEME=raw` sends `Authorization: <key>` (matching the first curl example you gave, which omitted `Bearer`); the default `Bearer` matches the rest. With `APP_MODE=auto`, saving a server URL in Settings switches that session to the live API; explicit `APP_MODE=demo` remains in demo mode.
 
 ### Live events
 
@@ -100,7 +101,7 @@ MIN_AUTO_REFRESH=10
 MAX_EVENTS=1500
 ```
 
-`SSE_MAX_SECONDS` recycles long-lived PHP workers; the browser reconnects automatically. On Windows/Apache with few PHP workers, keep SSE on for one browser or set `SSE_ENABLED=false` and rely on auto-refresh polling.
+`SSE_MAX_SECONDS` recycles long-lived PHP workers; the browser reconnects automatically. SSE is automatically disabled on PHP’s built-in development server because a long-lived stream can block other requests. Use auto-refresh there. On Apache/FPM with few workers, set `SSE_ENABLED=false` if streams use up the available workers.
 
 ### Demo mode
 
@@ -122,7 +123,7 @@ Your examples map to these endpoints (all requests are proxied by `api.php`, so 
 | Block IP (not in your examples) | `POST api.php?action=block` | `POST {base}/ipaware/firewall/block?ip=…&reason=…&duration=…` |
 | Remove from allow list (not in your examples) | `POST api.php?action=unallow` | `DELETE {base}/ipaware/allowed_ips?cidr=…` |
 
-All upstream calls send `Authorization: Bearer <APIKey>` (or the configured scheme), `Accept: application/json`, TLS verification, and timeouts. Responses are auto-normalized by `src/Normalizer.php`, which understands arrays, `{data:[…]}`, `{decisions:[…]}`, `{items:[…]}`, nested/CrowdSec-style decision objects, plain string lists, and common field aliases. If your API uses different field names, use **Settings → Raw decisions / Raw allow list** to see the exact shape, then add the names to the key lists in `Normalizer.php`.
+All upstream calls send `Authorization: Bearer <APIKey>` (or the configured scheme), `Accept: application/json`, TLS verification, and timeouts. `src/Normalizer.php` accepts a single decision, arrays, common wrappers such as `{data:[…]}`, `{decisions:[…]}`, `{blockedIps:[…]}`, `{allowed_ips:[…]}` and `{items:[…]}`, nested/CrowdSec-style addresses, and IPv4/IPv6 string lists. Server metadata is not treated as an address list. The full upstream record is kept for the row popup. If a nonempty response cannot be recognized, the list displays a diagnostic; **Settings → Raw decisions / Raw allow list** provides a size-limited response preview.
 
 ### Things I assumed — please confirm
 
@@ -130,17 +131,16 @@ All upstream calls send `Authorization: Bearer <APIKey>` (or the configured sche
 2. **Removing a whitelist entry:** assumed `DELETE /ipaware/allowed_ips?cidr=<cidr>`. Change `ALLOWLIST_DELETE_METHOD=POST` (and add an `action=delete` style param in `Upstream::unallow()`) if your API differs.
 3. **Auth header:** assumed `Authorization: Bearer <key>` for all calls; one of your examples omitted `Bearer`. Set `AUTH_SCHEME=raw` for `Authorization: <key>` or `AUTH_SCHEME=ApiKey` for `X-API-Key: <key>`.
 4. **"Read events to update"** — interpreted as a live SSE event stream that re-reads decisions/allow list and pushes changes, plus configurable polling. If you meant an existing upstream `/events` endpoint, tell me its path and I'll add `ENDPOINT_EVENTS` and consume it directly.
-5. **"Search commans"** — interpreted as a searchable command reference (Commands tab) **and** a `Ctrl+K` command palette. If you meant something else (e.g. searching a shell history), let me know.
 
 ---
 
 ## 4. Security notes
 
-- API key: session-only via the UI, or `.env.local` (never committed). It is never included in JSON responses, logs, exports, or command snippets (those show `$APIKey`).
+- API key: session-only via the UI, or `.env.local` (never committed). Never put a real key in tracked `.env`; anyone with repository access could read it from Git history. It is never included in JSON responses, logs, or exports.
 - Sessions use `HttpOnly`, `SameSite=Strict`, `Secure` on HTTPS, strict mode, and live under `data/sessions`.
 - All state-changing `api.php` calls and the export require a per-session CSRF token (`X-CSRF-Token`).
 - Security headers on every response: CSP (`default-src 'self'`, no inline scripts), `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS on HTTPS.
-- `.env*`, `src/`, `data/`, `templates/`, `dev/`, `assets/`, `.git*` are blocked by `.htaccess` / `web.config` / `dev/router.php`.
+- `.env*`, `src/`, `data/`, `templates/`, `dev/`, `tests/`, `assets/`, `.git*` are blocked by `.htaccess` / `web.config` / `dev/router.php`.
 - The upstream URL is validated (http/https only, no credentials/query/fragment) before a runtime override is accepted. Set `ALLOW_RUNTIME_SERVER_OVERRIDE=false` to lock the server URL to `.env`.
 - All client-supplied IPs/CIDRs are validated with `filter_var` and a custom IPv4/IPv6 CIDR matcher before being sent upstream.
 
@@ -155,11 +155,26 @@ All upstream calls send `Authorization: Bearer <APIKey>` (or the configured sche
 | "API key required" | Settings → API key, or set `API_KEY` in `.env.local`. |
 | "No upstream server configured" | Set `API_BASE_URL` in `.env` (or `APP_MODE=demo`). |
 | HTTP 401/403 from upstream | Wrong key or wrong scheme → `AUTH_SCHEME=raw`/`ApiKey`. |
-| Tables empty but no error | Open Settings → Raw decisions. If the shape is unusual, extend `src/Normalizer.php`. |
-| Live stream keeps reconnecting | A proxy may buffer SSE. Disable it (`SSE_ENABLED=false`) or rely on auto-refresh; check `X-Accel-Buffering: no` on nginx. |
+| Blocked list empty | Check the server, API key and mode in Settings. If the response shape is unrecognized, the list shows a warning; open Settings → Raw decisions to inspect it. |
+| Live stream unavailable or reconnecting | PHP’s built-in server uses auto-refresh instead of SSE. For other servers, a proxy may buffer SSE; disable it (`SSE_ENABLED=false`) or check `X-Accel-Buffering: no` on nginx. |
 | Export downloads `.csv` instead of `.xlsx` | Enable PHP `ext-zip`. The CSV fallback still opens in Excel. |
 | Styles/JS 404 | Your web server must allow `asset.php?f=…`. Do not serve `assets/` directly — it is intentionally blocked. |
 | Errors | Check `data/error.log` and `data/access-denied.log`. Set `APP_DEBUG=true` temporarily. |
+
+### Regression tests
+
+With PHP 8.2+ and Node installed, run from the repository root:
+
+```sh
+php tests/normalizer.php
+php tests/config.php
+node --test tests/ui.mjs
+node tests/live-integration.mjs
+node tests/php-server.mjs
+node tests/preview.mjs
+```
+
+The integration tests use temporary local servers and a fake API key; they do not contact a real upstream. The PHP-server test covers polling, the nested IP view and allow-list records, and preservation of full raw JSON. Set `PHP_BIN` if the PHP executable is not named `php`. To also run the optional browser checks, set `IPAWARE_PLAYWRIGHT_MODULE` to the absolute path of Playwright Core's `index.mjs` and `IPAWARE_CHROMIUM_EXECUTABLE` to a Chromium executable.
 
 ---
 
@@ -171,7 +186,7 @@ A Node mock backend renders the exact same template and front-end assets so you 
 node dev/preview.mjs       # http://localhost:3000
 ```
 
-This is **preview only**. It does not implement the IP allowlist or any of the PHP security controls — deploy the PHP files for real use.
+This is **preview only** with sample data. It cannot connect to a real IPAware server and intentionally refuses API keys and server configuration. It does not implement the IP allowlist or other PHP security controls — run or deploy the PHP files for real use.
 
 ---
 
@@ -221,7 +236,7 @@ cd /d D:\www\ipaware
 php -S 127.0.0.1:8080 -t . dev\router.php
 ```
 
-Open **http://127.0.0.1:8080/**. `dev\router.php` is important: the built-in server ignores `.htaccess`, and the router enforces the IP allowlist and blocks private directories for every request.
+Open **http://127.0.0.1:8080/**. `dev\router.php` is important: the built-in server ignores `.htaccess`, and the router enforces the IP allowlist and blocks private directories for every request. Live SSE is disabled on this server to prevent stalled requests; choose an auto-refresh interval instead.
 
 **Option B — XAMPP / Apache:**
 
@@ -239,7 +254,7 @@ server {
     listen 8080;
     root D:/www/ipaware;
     index index.php;
-    location ~ ^/(src|data|dev|templates|assets)/ { deny all; }
+    location ~ ^/(src|data|dev|tests|templates|assets)/ { deny all; }
     location ~ /\.(env|git|htaccess) { deny all; }
     location / { try_files $uri $uri/ /index.php?$query_string; }
     location ~ \.php$ {
@@ -256,7 +271,7 @@ server {
 
 1. Open the site. You should see the console and a **Demo data** or **Live API** badge.
 2. Go to **Settings → API key**, paste your key, optionally set the server URL, and click **Save for this session**. Click **Test connection**.
-3. Open **Overview** → press **Refresh**. Set **Auto-refresh** to your preferred interval and leave **Live** on for push updates.
+3. Open **Overview** → press **Refresh**. Set **Auto-refresh** to your preferred interval; on supported servers, leave **Live** on for push updates.
 4. Use the global search or **IP lookup** for an address; use the row actions to **Release**, **Block**, or **Add to allow list**.
 5. Click **Export → Excel workbook (.xlsx)** to download the tables.
 

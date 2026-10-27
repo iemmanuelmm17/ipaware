@@ -6,12 +6,11 @@ const resolve = (path) => new URL(path, document.baseURI).href;
 const assetUrl = (name) => resolve(`asset.php?f=${encodeURIComponent(name)}`);
 window.IPAWARE = { cfg, resolve, assetUrl };
 
-const [apiMod, uiMod, storeMod, tableMod, commandMod, sharedMod, paletteMod] = await Promise.all([
+const [apiMod, uiMod, storeMod, tableMod, sharedMod, paletteMod] = await Promise.all([
   import(assetUrl('js/api.js')),
   import(assetUrl('js/ui.js')),
   import(assetUrl('js/store.js')),
   import(assetUrl('js/table.js')),
-  import(assetUrl('js/commands.js')),
   import(assetUrl('js/views/shared.js')),
   import(assetUrl('js/palette.js')),
 ]);
@@ -21,7 +20,6 @@ const { qs, qsa } = ui;
 const api = apiMod.createApi(cfg, resolve);
 const store = storeMod.createStore(cfg);
 const table = tableMod;
-const commands = commandMod;
 const shared = sharedMod;
 
 const viewEl = qs('#view');
@@ -31,7 +29,6 @@ const routes = {
   allowlist: { title: 'Whitelist', subtitle: 'Allowed IPs and CIDR ranges, with comments.', load: () => import(assetUrl('js/views/lists.js')).then((m) => m.createAllowlist) },
   lookup: { title: 'IP lookup', subtitle: 'Inspect a single address and act on it immediately.', load: () => import(assetUrl('js/views/lookup.js')).then((m) => m.create) },
   events: { title: 'Live events', subtitle: 'Server-Sent Events activity log and upstream change detection.', load: () => import(assetUrl('js/views/events.js')).then((m) => m.create) },
-  commands: { title: 'Commands', subtitle: 'Searchable, copyable API commands for every action.', load: () => import(assetUrl('js/views/commands.js')).then((m) => m.create) },
   settings: { title: 'Settings', subtitle: 'API key, server, access control and diagnostics.', load: () => import(assetUrl('js/views/settings.js')).then((m) => m.create) },
 };
 
@@ -47,10 +44,9 @@ let lastUpstreamErrorKey = '';
 
 const ctx = {
   get cfg() { return api.config; },
-  api, ui, store, table, commands, shared,
+  api, ui, store, table, shared,
   assetUrl, resolve,
   pendingLookup: null,
-  pendingCommandVars: null,
 };
 
 function parseHash() {
@@ -69,11 +65,12 @@ function updateChrome() {
   let tone = 'pill--live';
   let label = 'Live API';
   if (config.demo) { tone = 'pill--demo'; label = 'Demo data'; }
+  if (config.previewOnly) { tone = 'pill--demo'; label = 'Preview only'; }
   if (!config.demo && !config.hasApiKey) { tone = 'pill--demo'; label = 'API key needed'; }
   if (lastError) { tone = 'pill--error'; label = 'Connection error'; }
   pill.className = `pill ${tone}`;
   pill.innerHTML = `<span class="dot"></span>${ui.escapeHtml(label)}`;
-  pill.title = lastError || `${config.mode} mode · ${config.keySource}`;
+  pill.title = lastError || (config.previewOnly ? 'Sample data only; run the PHP app for live IPAware data.' : `${config.mode} mode · ${config.keySource}`);
 
   qs('#client-ip').textContent = config.access?.clientIp || '—';
   const stats = store.stats();
@@ -95,27 +92,27 @@ function updateChrome() {
     : '';
 
   const status = store.state.liveStatus;
+  const liveToggle = qs('#live-toggle');
+  liveToggle.disabled = !config.sseEnabled;
+  liveToggle.checked = !!config.sseEnabled && isLive();
+  liveToggle.parentElement.title = config.sseEnabled
+    ? 'Server-Sent Events push updates'
+    : (config.sseDisabledReason || 'Live stream disabled. Use auto-refresh instead.');
   const liveRow = qs('#live-dot').parentElement;
   liveRow.classList.toggle('is-live', status === 'live');
-  qs('#live-label').textContent = {
+  qs('#live-label').textContent = !config.sseEnabled ? 'Live stream unavailable' : ({
     live: 'Live stream connected', connecting: 'Connecting…', reconnecting: 'Reconnecting…', off: 'Live stream off',
-  }[status] || 'Live stream offline';
+  }[status] || 'Live stream offline');
 }
 
 async function navigate(route, options = {}) {
   if (!routes[route]) route = 'overview';
-  if (options.ip) ctx.pendingCommandVars = { ...(ctx.pendingCommandVars || {}), ip: options.ip };
   const hash = `#/${route}`;
   if (location.hash !== hash) {
     history.pushState(null, '', hash);
   }
   if (activeRoute === route && !options.force) {
-    if (route === 'commands' && options.ip && mounted.has('commands')) {
-      viewEl.innerHTML = '';
-      mounted.get('commands').mount(viewEl);
-    } else {
-      renderActive();
-    }
+    renderActive();
     return;
   }
   activeRoute = route;
@@ -164,17 +161,23 @@ async function refresh({ silent = false, reason = 'manual', force = false } = {}
     if (data.meta?.config) api.updateConfig(data.meta.config);
     const upstreamErrors = Object.values(store.state.meta?.errors || {});
     const errorKey = upstreamErrors.join(' | ');
-    if (errorKey && errorKey !== lastUpstreamErrorKey) {
+    if (errorKey && (errorKey !== lastUpstreamErrorKey || (!silent && reason === 'manual'))) {
       ui.toast({ title: 'Upstream error', message: upstreamErrors[0] }, 'error');
     }
     lastUpstreamErrorKey = errorKey;
     lastError = store.state.error;
     lastRefreshAt = Date.now();
     renderActive();
-    if (!silent && reason === 'manual') ui.toast('Lists refreshed', 'success', 1600);
+    if (!silent && reason === 'manual' && !errorKey) {
+      const listWarning = data.meta?.lists?.decisions?.warning || data.meta?.lists?.allowed_ips?.warning;
+      if (listWarning) ui.toast({ title: 'Response needs attention', message: listWarning }, 'warning', 6000);
+      else ui.toast('Lists refreshed', 'success', 1600);
+    }
   } catch (error) {
     if (error?.name === 'AbortError') return;
     lastError = error.message;
+    store.state.requestError = error.message;
+    renderActive();
     if (!silent) ui.toast({ title: 'Refresh failed', message: error.message }, 'error', 6000);
   } finally {
     if (inflight === controller) inflight = null;
@@ -189,6 +192,7 @@ function isLive() {
 }
 
 function setLive(value) {
+  if (value && !api.config.sseEnabled) return;
   localStorage.setItem('ipa.live', value ? '1' : '0');
   qs('#live-toggle').checked = !!value;
   configureStream();
@@ -456,7 +460,7 @@ function bindChrome() {
     if (event.key === '?') {
       event.preventDefault();
       ui.jsonDialog('Keyboard shortcuts', [
-        'Ctrl+K / Cmd+K  -  command palette (search commands, actions and tabs)',
+        'Ctrl+K / Cmd+K  -  quick actions (search actions and tabs)',
         '/                -  focus global IP search',
         'R                -  refresh lists now',
         '?                -  this help',

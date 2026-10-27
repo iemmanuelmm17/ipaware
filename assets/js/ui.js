@@ -241,9 +241,10 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function scalarHtml(key, value) {
-  if (value === null || value === undefined || value === '') return '<span class="muted">—</span>';
-  if (typeof value === 'boolean') return badge(value ? 'Yes' : 'No', value ? 'green' : 'muted');
+function scalarHtml(key, value, preserveEmpty = false) {
+  if (value === null) return '<span class="muted mono">null</span>';
+  if (value === undefined || value === '') return `<span class="muted">${preserveEmpty && value === '' ? '&quot;&quot;' : '—'}</span>`;
+  if (typeof value === 'boolean') return badge(value ? 'true' : 'false', value ? 'green' : 'muted');
   if (typeof value === 'number') return escapeHtml(String(value));
   const text = String(value);
   if ((ISO_RE.test(text) || (DATE_KEY_RE.test(key) && /^\d{10,13}$/.test(text))) && parseDate(text)) {
@@ -262,20 +263,25 @@ export function renderRecordFields(record, depth = 0) {
   const blocks = [];
   Object.entries(record || {}).forEach(([key, value]) => {
     const label = humanizeKey(key);
-    if (isPlainObject(value) && Object.keys(value).length) {
-      blocks.push(group(label, renderRecordFields(value, depth + 1)));
+    if (isPlainObject(value)) {
+      if (Object.keys(value).length) blocks.push(group(label, renderRecordFields(value, depth + 1)));
+      else scalars.push([label, '<span class="muted mono">{}</span>']);
     } else if (Array.isArray(value) && value.some((item) => item !== null && typeof item === 'object')) {
-      blocks.push(group(label, value.map((item, i) => (
-        item !== null && typeof item === 'object'
-          ? group(`${label} ${i + 1}`, renderRecordFields(item, depth + 2))
-          : `<p class="mono">${escapeHtml(String(item))}</p>`
-      )).join('')));
+      blocks.push(group(label, value.map((item, i) => {
+        if (item !== null && typeof item === 'object') {
+          const empty = Array.isArray(item) ? '[]' : '{}';
+          return group(`${label} ${i + 1}`, Object.keys(item).length
+            ? renderRecordFields(item, depth + 2)
+            : `<span class="muted mono">${empty}</span>`);
+        }
+        return `<p>${scalarHtml(key, item, true)}</p>`;
+      }).join('')));
     } else if (Array.isArray(value)) {
       scalars.push([label, value.length
-        ? `<span class="chip-list">${value.map((v) => `<span class="chip mono">${escapeHtml(String(v))}</span>`).join('')}</span>`
-        : '<span class="muted">—</span>']);
+        ? `<span class="chip-list">${value.map((v) => `<span class="chip mono">${scalarHtml(key, v, true)}</span>`).join('')}</span>`
+        : '<span class="muted mono">[]</span>']);
     } else {
-      scalars.push([label, scalarHtml(key, value)]);
+      scalars.push([label, scalarHtml(key, value, true)]);
     }
   });
   const table = scalars.length
@@ -290,17 +296,20 @@ export function renderRecordFields(record, depth = 0) {
  */
 export function recordDialog({ title, subtitle = '', summary = [], record = {}, actions = [] } = {}) {
   const root = qs('#modal-root');
+  const opener = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const json = JSON.stringify(record ?? {}, null, 2);
   backdrop.innerHTML = `
     <div class="modal modal--wide modal--detail" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
-      <div class="modal-head">${icon('eye')}<div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="muted tiny">${escapeHtml(subtitle)}</p>` : ''}</div></div>
+      <div class="modal-head">${icon('eye')}<div><h2>${escapeHtml(title)}</h2>${subtitle ? `<p class="muted tiny">${escapeHtml(subtitle)}</p>` : ''}</div>
+        <button class="icon-btn" data-act="close" type="button" aria-label="Close details" title="Close details">${icon('x')}</button></div>
       <div class="modal-body">
         <section class="detail-section"><h3>Summary</h3>
           <dl class="kv detail-kv">${summary.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${scalarHtml(label, value)}</dd>`).join('')}</dl>
         </section>
         <section class="detail-section"><h3>Full record</h3>${renderRecordFields(record) || '<p class="muted">No data</p>'}</section>
+        <details class="detail-json"><summary>View raw JSON</summary><pre class="raw-json">${escapeHtml(json)}</pre></details>
       </div>
       <div class="modal-foot">
         ${actions.map((a, i) => `<button class="btn" type="button" data-act="custom-${i}">${a.icon ? icon(a.icon) : ''} ${escapeHtml(a.label)}</button>`).join('')}
@@ -309,8 +318,21 @@ export function recordDialog({ title, subtitle = '', summary = [], record = {}, 
       </div>
     </div>`;
   root.appendChild(backdrop);
-  const close = () => { backdrop._cleanup?.(); backdrop.remove(); };
-  closeOnEscape(backdrop, () => backdrop.remove());
+  const close = () => {
+    backdrop._cleanup?.();
+    backdrop.remove();
+    if (opener?.isConnected) opener.focus();
+  };
+  closeOnEscape(backdrop, close);
+  backdrop.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const controls = qsa('button:not([disabled]), details > summary', backdrop);
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
   backdrop.addEventListener('click', async (event) => {
     if (event.target === backdrop || event.target.closest('[data-act="close"]')) return close();
     if (event.target.closest('[data-act="copy-json"]')) {

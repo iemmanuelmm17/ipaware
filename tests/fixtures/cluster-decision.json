@@ -1,0 +1,94 @@
+{
+  "ip": "203.0.113.83",
+  "verdict": "block",
+  "enforcedByServers": [
+    "core1-nyc.example.net",
+    "core1-pdx.example.net",
+    "core2-nyc.example.net",
+    "core2-pdx.example.net",
+    "mis1.nyc.example.net",
+    "mis1.pdx.example.net"
+  ],
+  "enforcedByServerCount": 6,
+  "blockedOnThisServer": true,
+  "enforcement": {
+    "blockedOnThisServer": true,
+    "block": {
+      "reason": "community_blocklist",
+      "score": null,
+      "type": "community",
+      "addedAt": "2026-10-27T06:20:17.620Z",
+      "expiresAt": "2026-11-03T06:20:17.620Z"
+    }
+  },
+  "enforcedByAnyServer": true,
+  "suppressedReason": null,
+  "firstDecidedAt": "2026-10-27T06:20:13.000Z",
+  "lastDecidedAt": "2026-10-27T06:20:19.000Z",
+  "servers": ["mis1.pdx.example.net"],
+  "serverCount": 1,
+  "decisionCount": 1,
+  "score": null,
+  "threshold": null,
+  "thresholdName": null,
+  "scoreNote": null,
+  "thresholdNote": null,
+  "paths": ["community_blocklist"],
+  "kinds": [],
+  "reasons": [
+    {"signal": "community_blocklist", "label": "community blocklist feed", "value": null, "gate": false}
+  ],
+  "evidence": {
+    "originServer": "mis1.pdx.example.net",
+    "reason": "community_blocklist",
+    "reasonTruncated": false,
+    "type": "community",
+    "typeTruncated": false,
+    "explanation": "A cluster-wide block; the originating server's reason was community blocklist feed."
+  },
+  "evidenceFrom": {
+    "server": "core2-nyc.example.net",
+    "originServer": "mis1.pdx.example.net",
+    "path": "community_blocklist",
+    "kind": null,
+    "verdict": "block",
+    "decidedAt": "2026-10-27T06:20:19.000Z"
+  },
+  "source": {
+    "geo": {
+      "country": "DE",
+      "region": "Hessen",
+      "city": "Frankfurt am Main",
+      "lat": 50.11088,
+      "lon": 8.682,
+      "asn": "AS64500",
+      "isp": "Example Hosting"
+    },
+    "history": {
+      "extensionCount": 0,
+      "domainCount": 0,
+      "firstSeen": null,
+      "extensions": [],
+      "domains": [],
+      "windowDays": 90,
+      "explanation": "Unique extensions this address registered to successfully over the last 90 days. Each server polls for these itself, so a brief registration can be missing here."
+    },
+    "rejects": {
+      "extensionCount": 0,
+      "domainCount": 0,
+      "serverCount": 0,
+      "lastSeen": null,
+      "extensions": [],
+      "domains": [],
+      "servers": [],
+      "extensionsTruncated": false,
+      "domainsTruncated": false,
+      "serversTruncated": false,
+      "windowDays": 90,
+      "explanation": "Unique extensions this address unsuccessfully registered to over the last 90 days. Counted cluster-wide; several servers seeing the same failure is ordinary."
+    },
+    "firstSeenAt": null,
+    "lastSeenAt": null,
+    "sightings": null
+  }
+}

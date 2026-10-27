@@ -10,6 +10,7 @@ function haystack(row) {
   return [
     row.ip, row.cidr, row.reason, row.comment, row.scenario,
     row.source, row.origin, row.action, row.kind, row.ttl, row.created, row.expires, row.explanation,
+    row.addedBy, row.country, row.city, row.domain,
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -33,6 +34,8 @@ function matches(row, query) {
       if (field === 'source') return String(row.source || row.origin || '').toLowerCase().includes(value);
       if (field === 'scenario') return String(row.scenario || '').toLowerCase().includes(value);
       if (field === 'comment') return String(row.comment || '').toLowerCase().includes(value);
+      if (field === 'addedby') return String(row.addedBy || '').toLowerCase().includes(value);
+      if (['country', 'city', 'domain'].includes(field)) return String(row[field] || '').toLowerCase().includes(value);
     }
     return hay.includes(token);
   });
@@ -43,6 +46,11 @@ const comparators = {
   kind: (a, b) => String(a.kind || '').localeCompare(String(b.kind || '')),
   reason: (a, b) => String(a.explanation || a.reason || a.comment || '').localeCompare(String(b.explanation || b.reason || b.comment || '')),
   source: (a, b) => String(a.source || a.origin || '').localeCompare(String(b.source || b.origin || '')),
+  comment: (a, b) => String(a.comment || '').localeCompare(String(b.comment || '')),
+  addedBy: (a, b) => String(a.addedBy || '').localeCompare(String(b.addedBy || '')),
+  country: (a, b) => String(a.country || '').localeCompare(String(b.country || '')),
+  city: (a, b) => String(a.city || '').localeCompare(String(b.city || '')),
+  domain: (a, b) => String(a.domain || '').localeCompare(String(b.domain || '')),
   created: (a, b) => dateValue(a.created) - dateValue(b.created),
   expires: (a, b) => dateValue(a.expires) - dateValue(b.expires),
 };
@@ -60,6 +68,7 @@ export function createStore(config) {
     loading: false,
     lastUpdated: null,
     error: null,
+    requestError: null,
     liveStatus: 'off',
     liveStats: null,
     chunkSize: Number(localStorage.getItem('ipa.chunk') || 30),
@@ -78,6 +87,7 @@ export function createStore(config) {
     state.allowed = Array.isArray(payload.allowed) ? payload.allowed : [];
     state.stats = payload.stats || {};
     state.meta = payload.meta || {};
+    state.requestError = null;
     state.lastUpdated = Date.now();
     if (Array.isArray(payload.events)) {
       const merged = new Map(state.events.map((event) => [event.id, event]));
@@ -129,7 +139,7 @@ export function createStore(config) {
 
   function setSort(key) {
     if (state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
-    else state.sort = { key, dir: key === 'ip' || key === 'reason' || key === 'source' || key === 'kind' ? 'asc' : 'desc' };
+    else state.sort = { key, dir: ['ip', 'reason', 'source', 'kind', 'comment', 'addedBy', 'country', 'city', 'domain'].includes(key) ? 'asc' : 'desc' };
     emit('sort');
   }
 

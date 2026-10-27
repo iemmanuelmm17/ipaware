@@ -112,6 +112,11 @@ try {
                 $latency = max($latency, (int) ($m['durationMs'] ?? 0));
             }
             $warnings = [];
+            foreach ($meta as $listMeta) {
+                if (!empty($listMeta['warning'])) {
+                    $warnings[] = $listMeta['warning'];
+                }
+            }
             if ($upstream->isDemo()) {
                 $warnings[] = 'Demo mode: showing built-in sample data. Set API_BASE_URL in .env to connect to your server.';
             } elseif (!$upstream->hasKey()) {
@@ -223,7 +228,7 @@ try {
         case 'set_key':
             $key = trim(ipa_string($body, 'apiKey', 2000));
             $server = trim(ipa_string($body, 'server', 300));
-            $app->setApiKey($key);
+            $valid = null;
             if ($server !== '') {
                 if (!$cfg['runtimeServerOverrideAllowed']) {
                     throw new ApiException('Runtime server overrides are disabled (ALLOW_RUNTIME_SERVER_OVERRIDE=false).', 403);
@@ -232,12 +237,19 @@ try {
                 if ($valid === null) {
                     throw new ApiException('Server URL must be a plain http(s) origin, e.g. https://myserver.example.com', 422);
                 }
+            }
+            // Blank means "keep the current key"; Clear session explicitly removes it.
+            // Validate the URL first so a rejected save cannot partially update credentials.
+            if ($key !== '') {
+                $app->setApiKey($key);
+            }
+            if ($valid !== null) {
                 $app->setServerOverride($valid);
             }
-            $events->append('auth', $key !== '' ? 'API key updated from the console' : 'API key cleared from the session', '', 'info', [
+            $events->append('auth', $key !== '' ? 'API key updated from the console' : 'Session settings updated from the console', '', 'info', [
                 'by' => Support::maskIp($ip),
             ]);
-            ipa_send(['ok' => true, 'config' => $app->clientConfig(), 'message' => $key !== '' ? 'API key saved for this session.' : 'API key cleared.']);
+            ipa_send(['ok' => true, 'config' => $app->clientConfig(), 'message' => $key !== '' ? 'API key saved for this session.' : 'Session settings saved.']);
 
         case 'clear_key':
             $app->setApiKey('');

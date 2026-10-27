@@ -16,9 +16,9 @@ const HOST = '0.0.0.0';
 
 const VERSION = '1.0.0';
 const config = {
-  appName: 'IPAware Console', version: VERSION, mode: 'demo', demo: true,
-  server: 'https://$server', serverConfigured: false, serverOverridden: false,
-  runtimeServerOverrideAllowed: true, keySource: 'none', hasApiKey: false,
+  appName: 'IPAware Console', version: VERSION, mode: 'demo', demo: true, previewOnly: true,
+  server: '', serverConfigured: false, serverOverridden: false,
+  runtimeServerOverrideAllowed: false, keySource: 'none', hasApiKey: false,
   authScheme: 'Bearer', verifyTls: true, timeout: 12,
   endpoints: {
     decisions: '/ipaware/decisions', ip: '/ipaware/ip',
@@ -61,19 +61,53 @@ function blockRow(address, i = 0) {
   };
 }
 function allowRow(address, i = 0) {
+  const comment = pick(comments);
+  const source = pick(['admin', 'api', 'console']);
+  const created = iso(-Math.floor(rnd() * 60 * 60 * 24 * 80));
   return {
     id: `allow_${i}_${Math.floor(rnd() * 1e9)}`, kind: 'allowed', ip: address,
-    cidr: address.includes('/') ? address : `${address}/32`,
-    reason: pick(comments), comment: pick(comments), scenario: 'allowlist',
-    source: pick(['admin', 'api', 'console']), action: 'allow',
-    created: iso(-Math.floor(rnd() * 60 * 60 * 24 * 80)), expires: '', ttl: '', origin: 'console',
-    raw: { cidr: address, comment: pick(comments), created_by: 'admin' },
+    cidr: address.includes('/') ? address : `${address}/${address.includes(':') ? '128' : '32'}`,
+    reason: comment, comment, scenario: 'allowlist', source, addedBy: 'admin',
+    country: '', city: '', domain: '', action: 'allow', created, expires: '', ttl: '', origin: 'console',
+    raw: { cidr: address, source, comment, addedBy: 'admin', addedAt: created, expiresAt: null },
+  };
+}
+
+function exampleAllowRows() {
+  const records = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/allowlist.json'), 'utf8'));
+  return records.map((raw, i) => ({
+    id: `preview_allow_${i}`, kind: 'allowed', ip: raw.cidr,
+    cidr: raw.cidr.includes('/') ? raw.cidr : `${raw.cidr}/${raw.cidr.includes(':') ? '128' : '32'}`,
+    reason: raw.comment || '', comment: raw.comment || '', scenario: '',
+    source: raw.source || '', addedBy: raw.addedBy || '', country: raw.country || '',
+    city: raw.city || '', domain: raw.domain || '', action: 'allow',
+    created: raw.addedAt || '', expires: raw.expiresAt || '', ttl: '', origin: raw.source || '', raw,
+  }));
+}
+
+// Include a realistic cluster-shaped decision for exercising the full-details popup.
+// The fixture uses documentation IPs and example hostnames, not live data.
+function clusterRow() {
+  const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/cluster-decision.json'), 'utf8'));
+  raw.firstDecidedAt = iso(-15);
+  raw.lastDecidedAt = iso(-9);
+  raw.evidenceFrom.decidedAt = raw.lastDecidedAt;
+  raw.enforcement.block.addedAt = iso(-10);
+  raw.enforcement.block.expiresAt = iso(7 * 86400 - 10);
+  return {
+    id: 'preview_cluster', kind: 'blocked', ip: raw.ip, cidr: `${raw.ip}/32`,
+    reason: raw.enforcement.block.reason, explanation: raw.evidence.explanation,
+    comment: '', scenario: '', source: raw.evidence.originServer, action: raw.verdict,
+    created: raw.enforcement.block.addedAt, expires: raw.enforcement.block.expiresAt,
+    ttl: '', origin: raw.evidence.originServer, raw,
   };
 }
 
 let decisions = Array.from({ length: 158 }, (_, i) => blockRow(ip(), i));
 decisions.push(blockRow('2001:db8:4f::a1', 2));
+decisions.unshift(clusterRow());
 let allowed = Array.from({ length: 29 }, (_, i) => allowRow(i % 8 === 0 ? `${ip()}/29` : ip(), i));
+allowed.unshift(...exampleAllowRows());
 allowed.push(allowRow('2001:db8:1::/48', 1));
 let events = [];
 let eventSeq = 0;
@@ -115,12 +149,23 @@ ${[header, ...body].map((row) => `<Row>${row.map(cell).join('')}</Row>`).join('\
 }
 
 function lookup(address) {
+  const example = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/ip-lookup.json'), 'utf8'));
+  if (address === example.ip) {
+    return {
+      ip: address, verdict: 'allowed', status: example.score.lastVerdict,
+      decision: null, activeDecision: false, blockedOnThisServer: false, allowlisted: true,
+      reason: '', scenario: '', firstSeen: example.activity.firstSeen, lastSeen: example.activity.lastSeen,
+      expires: '', country: example.geo.country, asn: example.geo.asn, org: example.geo.isp,
+      events: [], raw: example,
+    };
+  }
   const decision = decisions.find((r) => r.ip === address) || null;
   const allowlisted = allowed.some((r) => r.ip === address || r.cidr === `${address}/32`);
   const verdict = allowlisted ? 'allowed' : decision ? 'blocked' : 'clean';
   return {
     ip: address, verdict, status: decision ? 'banned' : 'clean',
-    decision, allowlisted, reason: decision?.reason || 'No active decision found for this address.',
+    decision, activeDecision: decision !== null, blockedOnThisServer: decision !== null, allowlisted,
+    reason: decision?.reason || 'No active decision found for this address.',
     scenario: decision?.scenario || '—', firstSeen: iso(-86400), lastSeen: iso(-600), expires: decision?.expires || '',
     country: pick(['Philippines', 'Germany', 'Singapore', 'United States', 'Japan']),
     asn: `AS${10000 + Math.floor(rnd() * 40000)}`, org: 'Example Network',
@@ -143,8 +188,8 @@ function snapshot() {
     },
     meta: {
       fetchedAt: new Date().toISOString(), durationMs: 12, mode: 'demo', demo: true,
-      server: 'https://$server', keySource: config.keySource, hasApiKey: config.hasApiKey,
-      warnings: ['Preview mode: this live demo is powered by dev/preview.mjs. Deploy the PHP files for real use.'],
+      server: '', keySource: config.keySource, hasApiKey: config.hasApiKey,
+      warnings: ['Preview only: sample data. This preview cannot connect to your IPAware server; run the PHP app for live data.'],
       errors: {}, lists: {}, raw: {}, config,
     },
     csrf: config.csrf,
@@ -178,7 +223,8 @@ function handleApi(req, res, url) {
     const address = url.searchParams.get('ip') || '';
     if (!address) return json(res, { ok: false, message: 'IP is required' }, 422);
     log('lookup', `Looked up ${address}`, address);
-    return json(res, { ok: true, result: lookup(address), raw: lookup(address).raw, meta: { status: 200, demo: true } });
+    const result = lookup(address);
+    return json(res, { ok: true, result, raw: result.raw, meta: { status: 200, demo: true } });
   }
   if (action === 'events') {
     const q = (url.searchParams.get('q') || '').toLowerCase();
@@ -187,13 +233,18 @@ function handleApi(req, res, url) {
     const list = events.filter((e) => (!type || e.type === type) && (!q || `${e.message} ${e.type} ${e.ip}`.toLowerCase().includes(q)));
     return json(res, { ok: true, events: list.slice(0, limit) });
   }
-  if (action === 'test') return json(res, { ok: true, test: { status: 200, latencyMs: 12, message: 'Preview upstream responded successfully.', sample: [], url: 'demo://ipaware' }, message: 'Preview upstream responded successfully.' });
+  if (action === 'test') return json(res, { ok: false, message: 'Preview only: no connection to your IPAware server. Run the PHP app to connect.' }, 409);
   return json(res, { ok: false, message: `Unknown action: ${action}` }, 404);
 }
 
 async function handlePostApi(req, res, url) {
-  const body = await readBody(req);
   const action = url.searchParams.get('action');
+  // Never accept or store credentials in this unauthenticated mock server.
+  if (action === 'set_key') {
+    req.resume();
+    return json(res, { ok: false, message: 'Preview only: run the PHP app to configure your IPAware server and API key.' }, 409);
+  }
+  const body = await readBody(req);
   const address = String(body.ip || body.cidr || '').trim();
   switch (action) {
     case 'unblock': {
@@ -230,13 +281,6 @@ async function handlePostApi(req, res, url) {
       events = [];
       log('system', 'Event log cleared', '', 'info');
       return json(res, { ok: true, message: 'Event log cleared.' });
-    }
-    case 'set_key': {
-      config.keySource = body.apiKey ? 'session' : 'none';
-      config.hasApiKey = !!body.apiKey;
-      if (body.server) { config.server = body.server; config.serverOverridden = true; config.serverConfigured = true; }
-      log('auth', body.apiKey ? 'API key updated from the console' : 'API key cleared', '', 'info');
-      return json(res, { ok: true, config, message: body.apiKey ? 'API key saved for this session.' : 'API key cleared.' });
     }
     case 'clear_key': {
       config.keySource = 'none'; config.hasApiKey = false;

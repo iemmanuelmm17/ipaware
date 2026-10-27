@@ -18,7 +18,7 @@ $guardApp = require $root . '/src/bootstrap.php';
 $guardApp->guard->enforce('html');
 
 $path = rawurldecode((string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/'));
-if (preg_match('#(?:^|/)(?:\.env(?:\..*)?|\.git.*|\.htaccess|\.gitignore|composer\.(?:json|lock)|README\.md|web\.config|src|data|dev|templates|assets)(?:/|$)#i', $path)) {
+if (preg_match('#(?:^|/)(?:\.env(?:\..*)?|\.git.*|\.htaccess|\.gitignore|composer\.(?:json|lock)|README\.md|web\.config|src|data|dev|tests|templates|assets)(?:/|$)#i', $path)) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     exit('Not found');

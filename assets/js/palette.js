@@ -1,4 +1,4 @@
-/* Ctrl+K command palette: search navigation, actions and API commands. */
+/* Ctrl+K quick actions: search navigation and common actions. */
 
 export function openPalette(ctx, initial = '') {
   const root = document.querySelector('#palette-root');
@@ -12,7 +12,6 @@ export function openPalette(ctx, initial = '') {
     ['allowlist', 'Whitelist', 'check-circle', 'allow list allowed ips cidr'],
     ['lookup', 'IP lookup', 'search', 'inspect ip address details'],
     ['events', 'Live events', 'activity', 'stream log activity sse'],
-    ['commands', 'Commands', 'terminal', 'curl powershell api reference search commands'],
     ['settings', 'Settings', 'settings', 'api key server env access control'],
   ];
   nav.forEach(([route, title, ico, keywords]) => items.push({
@@ -26,26 +25,14 @@ export function openPalette(ctx, initial = '') {
     { id: 'export', group: 'Actions', title: 'Export to Excel', icon: 'download', subtitle: 'Download the current IP lists as .xlsx', keywords: 'xlsx csv export excel', run: () => ctx.actions.export('xlsx', 'all') },
     { id: 'block', group: 'Actions', title: 'Block an IP', icon: 'lock', subtitle: 'Create a firewall decision', keywords: 'ban deny firewall', run: () => ctx.actions.block('') },
     { id: 'allow', group: 'Actions', title: 'Add to allow list', icon: 'plus', subtitle: 'Whitelist an IP or CIDR', keywords: 'allowlist whitelist permit', run: () => ctx.actions.allow('') },
-    { id: 'live', group: 'Actions', title: 'Toggle live events', icon: 'zap', subtitle: 'Enable/disable the SSE stream', keywords: 'sse stream realtime', run: () => ctx.setLive(!ctx.isLive()) },
-    { id: 'test', group: 'Actions', title: 'Test API connection', icon: 'server', subtitle: 'Ping the upstream decisions endpoint', keywords: 'ping check connection api key', run: async () => {
+    ...(ctx.cfg.sseEnabled ? [{ id: 'live', group: 'Actions', title: 'Toggle live events', icon: 'zap', subtitle: 'Enable/disable the SSE stream', keywords: 'sse stream realtime', run: () => ctx.setLive(!ctx.isLive()) }] : []),
+    ...(!ctx.cfg.previewOnly ? [{ id: 'test', group: 'Actions', title: 'Test API connection', icon: 'server', subtitle: 'Ping the upstream decisions endpoint', keywords: 'ping check connection api key', run: async () => {
       try { const r = await ctx.api.test(); ui.toast({ title: r.test?.message || r.message, message: `HTTP ${r.test?.status} · ${r.test?.latencyMs} ms` }, 'success'); }
       catch (e) { ui.toast(e.message, 'error'); }
-    } },
+    } }] : []),
     { id: 'theme', group: 'Actions', title: 'Toggle theme', icon: 'moon', subtitle: 'Switch between dark and light', keywords: 'dark light appearance', run: () => ctx.toggleTheme() },
   ];
   items.push(...actions);
-
-  let commandVars = {};
-  try { commandVars = JSON.parse(localStorage.getItem('ipa.commandVars') || '{}'); } catch { /* ignore */ }
-  ctx.commands.commandList(ctx.cfg, commandVars).forEach((command) => items.push({
-    id: `cmd-${command.id}`, group: 'API commands', title: `Copy: ${command.title}`, icon: command.icon,
-    subtitle: `${command.method} ${command.path}`,
-    keywords: command.keywords,
-    run: async () => {
-      const ok = await ui.copy(ctx.commands.renderCommand(command, 'curl', ctx.cfg));
-      ui.toast(ok ? 'curl command copied to clipboard' : 'Copy failed', ok ? 'success' : 'error', 1800);
-    },
-  }));
 
   let query = initial || '';
   let activeIndex = 0;
@@ -54,10 +41,10 @@ export function openPalette(ctx, initial = '') {
   const backdrop = document.createElement('div');
   backdrop.className = 'palette-backdrop';
   backdrop.innerHTML = `
-    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
-      <div class="palette-input-wrap">${ui.icon('command')}<input type="text" placeholder="Search commands, actions, tabs, IPs…" autocomplete="off" spellcheck="false"><kbd>ESC</kbd></div>
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Quick actions">
+      <div class="palette-input-wrap">${ui.icon('command')}<input type="text" placeholder="Search actions, tabs, IPs…" autocomplete="off" spellcheck="false"><kbd>ESC</kbd></div>
       <div class="palette-results" data-results></div>
-      <div class="palette-foot"><span>↑↓ navigate</span><span>↵ run</span><span>esc close</span><span class="spacer" style="flex:1"></span><span>${items.length} commands</span></div>
+      <div class="palette-foot"><span>↑↓ navigate</span><span>↵ run</span><span>esc close</span><span class="spacer" style="flex:1"></span><span>${items.length} actions and tabs</span></div>
     </div>`;
   root.appendChild(backdrop);
   document.body.classList.add('modal-open');

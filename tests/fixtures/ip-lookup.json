@@ -1,0 +1,87 @@
+{
+  "ip": "192.0.2.174",
+  "server": "core.example.net",
+  "private": false,
+  "known": true,
+  "score": {
+    "lastScore": 0,
+    "lastVerdict": "allow",
+    "scoredAt": "2026-10-18T12:55:49.000Z",
+    "scoreAttempts": 5,
+    "lastScoreAttempt": "2026-10-18T12:55:48.000Z",
+    "scoredAfter": "success",
+    "recheckTier": "clean",
+    "recheckAfterDays": 10
+  },
+  "trust": {
+    "recognised": false,
+    "everSucceeded": true,
+    "threshold": 50,
+    "thresholdName": "cloudscore_scan_block_threshold_unvalidated",
+    "validatedThreshold": 90,
+    "unvalidatedThreshold": 50,
+    "appliesTo": ["registrar", "reject", "cdr"]
+  },
+  "activity": {
+    "firstSeen": "2026-09-17T18:17:52.000Z",
+    "lastSeen": "2026-10-27T17:37:04.000Z",
+    "sightings": 2641,
+    "sources": {"audit": 2641},
+    "cdr": {"attempts": 0, "answered": 0, "failed": 0, "lastAnswered": null},
+    "logins": {"attempts": 2641, "ok": 2631, "failed": 10}
+  },
+  "enforcement": {"blockedOnThisServer": false, "block": null, "allowlisted": true},
+  "recognition": {
+    "recognised": false,
+    "registrationAgeSeconds": 0,
+    "registrationAgeRead": "measured",
+    "domainSpan": null,
+    "domainSpanRead": "skipped",
+    "domainMax": 2,
+    "ageFloorSeconds": 172800
+  },
+  "history": {
+    "extensionCount": 0,
+    "domainCount": 0,
+    "firstSeen": null,
+    "extensions": [],
+    "domains": [],
+    "windowDays": 90,
+    "explanation": "Unique extensions this address registered to successfully over the last 90 days. Each server polls for these itself, so a brief registration can be missing here."
+  },
+  "rejects": {
+    "extensionCount": 0,
+    "domainCount": 0,
+    "serverCount": 0,
+    "lastSeen": null,
+    "extensions": [],
+    "domains": [],
+    "servers": [],
+    "extensionsTruncated": false,
+    "domainsTruncated": false,
+    "serversTruncated": false,
+    "windowDays": 90,
+    "explanation": "Unique extensions this address unsuccessfully registered to over the last 90 days. Counted cluster-wide; several servers seeing the same failure is ordinary."
+  },
+  "geo": {"country": "PH", "region": "Example Region", "city": "Example City", "lat": 40.0, "lon": -75.0, "asn": "AS64500", "isp": "Example Network"},
+  "risk": {
+    "fraudScore": 0,
+    "isProxy": false,
+    "proxyType": "-",
+    "isDatacenter": false,
+    "isScanner": false,
+    "state": null,
+    "reputation": null,
+    "cachedAt": "2026-10-27T17:53:05.856Z",
+    "expiresAt": "2026-10-27T18:53:05.856Z"
+  },
+  "decisions": {
+    "window": {"since": "2026-10-20T17:54:02.319Z", "until": "2026-10-27T17:54:02.319Z"},
+    "count": 0,
+    "enforcedByServers": [],
+    "enforcedByServerCount": 0,
+    "readHitLimit": false,
+    "mostRecent": null,
+    "all": "/ipaware/decisions?ip=192.0.2.174&ungrouped=1"
+  }
+}

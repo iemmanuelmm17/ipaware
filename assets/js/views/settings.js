@@ -19,28 +19,29 @@ export function create(ctx) {
       <div class="settings-grid">
         <section class="card">
           <div class="card-head"><div><h2>API connection</h2><p>Credentials are never sent back to the browser.</p></div>
-            ${ui.badge(cfg.demo ? 'DEMO MODE' : 'LIVE MODE', cfg.demo ? 'amber' : 'green')}</div>
+            ${ui.badge(cfg.previewOnly ? 'PREVIEW ONLY' : (cfg.demo ? 'DEMO MODE' : 'LIVE MODE'), cfg.demo ? 'amber' : 'green')}</div>
           <form class="card-body" data-creds>
+            ${cfg.previewOnly ? `<div class="notice" style="margin-bottom:14px">${ui.icon('info')}<span>This preview shows sample data and cannot connect to your server. Run the PHP app to use real IPAware data; do not enter credentials here.</span></div>` : ''}
             <div class="field"><label for="api-key">API key</label>
               <div class="input-group">
-                <input class="input input--mono" id="api-key" name="apiKey" type="password" placeholder="${cfg.hasApiKey ? '•••••••• (leave blank to keep current)' : 'Paste your API key'}" autocomplete="new-password" spellcheck="false">
-                <button class="btn" type="button" data-show-key title="Show / hide">${ui.icon('eye')}</button>
+                <input class="input input--mono" id="api-key" name="apiKey" type="password" placeholder="${cfg.previewOnly ? 'Unavailable in preview' : (cfg.hasApiKey ? '•••••••• (leave blank to keep current)' : 'Paste your API key')}" autocomplete="new-password" spellcheck="false" ${cfg.previewOnly ? 'disabled' : ''}>
+                <button class="btn" type="button" data-show-key title="Show / hide" ${cfg.previewOnly ? 'disabled' : ''}>${ui.icon('eye')}</button>
               </div>
-              <span class="hint">Stored in your PHP session only (or in <code class="mono">.env.local</code>). Current source: <strong>${ui.escapeHtml(keySourceLabel)}</strong>.</span></div>
+              <span class="hint">${cfg.previewOnly ? 'Credentials are disabled in the preview.' : `Stored in your PHP session only (or in <code class="mono">.env.local</code>). Current source: <strong>${ui.escapeHtml(keySourceLabel)}</strong>.`}</span></div>
             <div class="field"><label for="server-url">Upstream server URL</label>
               <input class="input input--mono" id="server-url" name="server" type="url" value="${ui.escapeHtml(cfg.server || '')}" placeholder="https://your-server.example.com" ${cfg.runtimeServerOverrideAllowed ? '' : 'disabled'}>
-              <span class="hint">Configured: <code class="mono">${ui.escapeHtml(cfg.server || 'not set')}</code>${cfg.serverOverridden ? ' (session override)' : ''}. ${cfg.runtimeServerOverrideAllowed ? 'Change it here for this session.' : 'Runtime overrides are disabled in .env.'}</span></div>
+              <span class="hint">Configured: <code class="mono">${ui.escapeHtml(cfg.server || 'not set')}</code>${cfg.serverOverridden ? ' (session override)' : ''}. ${cfg.previewOnly ? 'Unavailable in preview.' : (cfg.runtimeServerOverrideAllowed ? 'Change it here for this session.' : 'Runtime overrides are disabled in .env.')}</span></div>
             <div class="row">
-              <button class="btn btn--primary" type="submit">${ui.icon('key')} Save for this session</button>
-              <button class="btn" type="button" data-clear-key>${ui.icon('trash')} Clear session</button>
+              <button class="btn btn--primary" type="submit" ${cfg.previewOnly ? 'disabled' : ''}>${ui.icon('key')} Save for this session</button>
+              <button class="btn" type="button" data-clear-key ${cfg.previewOnly ? 'disabled' : ''}>${ui.icon('trash')} Clear session</button>
               <span class="spacer"></span>
-              <button class="btn" type="button" data-test>${ui.icon('zap')} ${testing ? 'Testing…' : 'Test connection'}</button>
+              <button class="btn" type="button" data-test ${cfg.previewOnly ? 'disabled' : ''}>${ui.icon('zap')} ${testing ? 'Testing…' : 'Test connection'}</button>
             </div>
           </form>
         </section>
 
         <section class="card">
-          <div class="card-head"><div><h2>Access control</h2><p>Only known public IPs may open this console.</p></div>${ui.badge('Allowed', 'green')}</div>
+          <div class="card-head"><div><h2>Access control</h2><p>${cfg.previewOnly ? 'Preview has no access control.' : 'Only known public IPs may open this console.'}</p></div>${ui.badge(cfg.previewOnly ? 'Preview' : 'Allowed', cfg.previewOnly ? 'amber' : 'green')}</div>
           <div class="card-body"><dl class="kv">
             <dt>Your IP</dt><dd>${ui.escapeHtml(cfg.access?.clientIp || 'unknown')}</dd>
             <dt>Allowlist</dt><dd>${ui.escapeHtml(cfg.access?.allowlistSource || '.env')}</dd>
@@ -58,9 +59,9 @@ export function create(ctx) {
         <section class="card">
           <div class="card-head"><div><h2>Live updates &amp; lazy loading</h2><p>Choose how fresh the tables stay.</p></div></div>
           <div class="card-body"><dl class="kv">
-            <dt>SSE stream</dt><dd>${cfg.sseEnabled ? 'enabled' : 'disabled in .env'}</dd>
+            <dt>SSE stream</dt><dd>${cfg.sseEnabled ? 'enabled' : ui.escapeHtml(cfg.sseDisabledReason || 'disabled')}</dd>
             <dt>Stream status</dt><dd data-live-status>${ui.escapeHtml(ctx.store.state.liveStatus)}</dd>
-            <dt>Server poll</dt><dd>every ${cfg.pollSeconds}s</dd>
+            <dt>Server poll</dt><dd>${cfg.sseEnabled ? `every ${cfg.pollSeconds}s` : '—'}</dd>
             <dt>Auto-refresh</dt><dd>${ui.escapeHtml(document.querySelector('#auto-refresh')?.selectedOptions?.[0]?.textContent || 'Every 30 s')}</dd>
             <dt>Min interval</dt><dd>${cfg.minAutoRefresh}s</dd>
             <dt>Lazy chunk</dt><dd>${ctx.store.state.chunkSize} rows</dd>
@@ -86,7 +87,6 @@ export function create(ctx) {
           <div class="row" style="margin-top:14px">
             <button class="btn btn--xs" type="button" data-raw="decisions">${ui.icon('file')} Raw decisions</button>
             <button class="btn btn--xs" type="button" data-raw="allowed_ips">${ui.icon('file')} Raw allow list</button>
-            <button class="btn btn--xs" type="button" data-go="commands">${ui.icon('terminal')} Commands</button>
           </div>
           <p class="hint muted" style="margin-top:10px">If your upstream uses different JSON field names, use the raw viewer and add them to <code class="mono">src/Normalizer.php</code>.</p>
           </div></section>
@@ -146,11 +146,10 @@ export function create(ctx) {
     el.querySelectorAll('[data-raw]').forEach((button) => button.addEventListener('click', async () => {
       try {
         const response = await ctx.api.raw(button.dataset.raw);
-        ctx.ui.jsonDialog(`Raw response — ${button.dataset.raw}`, response.raw);
+        const status = Number(response.meta?.status) || 0;
+        ctx.ui.jsonDialog(`Raw response — ${button.dataset.raw}${status ? ` (HTTP ${status})` : ''}`, response.raw);
       } catch (e) { ctx.ui.toast(e.message, 'error'); }
     }));
-    const go = el.querySelector('[data-go]');
-    if (go) go.addEventListener('click', () => ctx.navigate(go.dataset.go));
     el.querySelector('[data-toggle-theme]').addEventListener('click', () => ctx.toggleTheme());
     el.querySelector('[data-clear-events]').addEventListener('click', async () => {
       const ok = await ctx.ui.confirmDialog({ title: 'Clear the server event log?', danger: true, confirmText: 'Clear', message: 'This deletes data/events.jsonl. IP lists are not affected.' });
@@ -159,7 +158,7 @@ export function create(ctx) {
       catch (e) { ctx.ui.toast(e.message, 'error'); }
     });
     el.querySelector('[data-reset]').addEventListener('click', async () => {
-      const ok = await ctx.ui.confirmDialog({ title: 'Reset browser preferences?', confirmText: 'Reset', message: 'Clears theme, auto-refresh, command variables and chunk size stored in this browser.' });
+      const ok = await ctx.ui.confirmDialog({ title: 'Reset browser preferences?', confirmText: 'Reset', message: 'Clears theme, auto-refresh, live updates and other preferences stored in this browser.' });
       if (!ok) return;
       ['ipa.theme', 'ipa.autorefresh', 'ipa.live', 'ipa.chunk', 'ipa.commandVars', 'ipa.commandFormat', 'ipa.recentLookups'].forEach((k) => localStorage.removeItem(k));
       ctx.ui.toast('Preferences reset — reloading…', 'success', 1200);

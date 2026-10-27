@@ -28,7 +28,8 @@ final class Upstream
         $this->apiKey = $apiKey;
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->keySource = $keySource;
-        $this->demo = $cfg->isDemo();
+        // In auto mode, a session server override must select the live API too.
+        $this->demo = $cfg->isDemo($this->baseUrl);
         if ($this->demo) {
             $this->fake = new DemoUpstream($cfg);
         }
@@ -73,18 +74,10 @@ final class Upstream
         $this->requireLiveReady();
         if ($this->demo) {
             $r = $this->fake->decisions();
-            return [
-                'rows' => Normalizer::decisions($r['raw']),
-                'raw' => Normalizer::raw($r['raw']),
-                'meta' => $this->meta($r),
-            ];
+            return $this->listResponse($r['raw'], $r, 'blocked');
         }
         $r = $this->call('GET', (string) $this->cfg->get('ENDPOINT_DECISIONS'));
-        return [
-            'rows' => Normalizer::decisions($r['payload']),
-            'raw' => Normalizer::raw($r['payload']),
-            'meta' => $this->meta($r),
-        ];
+        return $this->listResponse($this->originalPayload($r), $r, 'blocked');
     }
 
     /** @return array{rows:array,raw:mixed,meta:array} */
@@ -93,18 +86,10 @@ final class Upstream
         $this->requireLiveReady();
         if ($this->demo) {
             $r = $this->fake->allowedIps();
-            return [
-                'rows' => Normalizer::allowlist($r['raw']),
-                'raw' => Normalizer::raw($r['raw']),
-                'meta' => $this->meta($r),
-            ];
+            return $this->listResponse($r['raw'], $r, 'allowed');
         }
         $r = $this->call('GET', (string) $this->cfg->get('ENDPOINT_ALLOWLIST'));
-        return [
-            'rows' => Normalizer::allowlist($r['payload']),
-            'raw' => Normalizer::raw($r['payload']),
-            'meta' => $this->meta($r),
-        ];
+        return $this->listResponse($this->originalPayload($r), $r, 'allowed');
     }
 
     /** @return array{result:array,raw:mixed,meta:array} */
@@ -117,9 +102,13 @@ final class Upstream
         }
         $path = rtrim((string) $this->cfg->get('ENDPOINT_IP'), '/') . '/' . rawurlencode($ip);
         $r = $this->call('GET', $path);
+        // Keep the original JSON types in the full, untruncated response.
+        $raw = $this->originalPayload($r);
+        $result = Normalizer::lookup($r['payload'], $ip);
+        $result['raw'] = $raw;
         return [
-            'result' => Normalizer::lookup($r['payload'], $ip),
-            'raw' => Normalizer::raw($r['payload']),
+            'result' => $result,
+            'raw' => $raw,
             'meta' => $this->meta($r),
         ];
     }
@@ -246,19 +235,45 @@ final class Upstream
             } elseif (is_string($payload)) {
                 $hint = mb_substr(strip_tags($payload), 0, 200);
             }
+            // Include the upstream status even when it supplied a message, and never
+            // expose an API key if the upstream echoes it in an error response.
+            $hint = Support::redact($hint, (string) $this->apiKey);
             if ($response['status'] === 401 || $response['status'] === 403) {
                 $hint = 'Upstream rejected the API key (HTTP ' . $response['status'] . '). Check Settings → API key.'
                     . ($hint !== '' ? ' Upstream said: ' . $hint : '');
-            } elseif ($hint === '') {
-                $hint = 'Upstream returned HTTP ' . $response['status'] . '.';
+            } else {
+                $hint = 'Upstream returned HTTP ' . $response['status'] . ($hint !== '' ? ': ' . $hint : '.');
             }
             throw new ApiException($hint, $response['status'] >= 400 && $response['status'] < 500 ? $response['status'] : 502, [
                 'status' => $response['status'],
                 'url' => $response['url'],
-                'body' => Normalizer::raw($payload),
+                'body' => $this->redactErrorValue(Normalizer::raw($payload)),
             ]);
         }
         return ['payload' => $payload, 'response' => $response];
+    }
+
+    /** Decode objects as objects so raw records retain {} and numeric-key objects. */
+    private function originalPayload(array $call): mixed
+    {
+        $decoded = json_decode((string) ($call['response']['body'] ?? ''));
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $call['payload'];
+    }
+
+    private function redactErrorValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return Support::redact($value, (string) $this->apiKey);
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+        $redacted = [];
+        foreach ($value as $key => $item) {
+            $safeKey = is_string($key) ? Support::redact($key, (string) $this->apiKey) : $key;
+            $redacted[$safeKey] = $this->redactErrorValue($item);
+        }
+        return $redacted;
     }
 
     private function url(string $endpoint): string
@@ -273,9 +288,23 @@ final class Upstream
         return $this->baseUrl . '/' . ltrim($endpoint, '/');
     }
 
+    /** @return array{rows:array,raw:mixed,meta:array} */
+    private function listResponse(mixed $payload, array $response, string $kind): array
+    {
+        $rows = $kind === 'allowed' ? Normalizer::allowlist($payload) : Normalizer::decisions($payload);
+        $meta = $this->meta($response);
+        if ($rows === [] && $payload !== null && $payload !== '' && !Normalizer::hasList($payload, $kind)) {
+            $name = $kind === 'allowed' ? 'allow list' : 'decisions';
+            $meta['warning'] = "The upstream $name response has no recognizable IP list. Check Settings → Raw $name.";
+        }
+        return ['rows' => $rows, 'raw' => Normalizer::raw($payload), 'meta' => $meta];
+    }
+
     /** @param array<string,mixed> $r */
     private function meta(array $r): array
     {
+        // Live calls wrap the HTTP response; demo calls already pass it directly.
+        $r = $r['response'] ?? $r;
         return [
             'status' => (int) ($r['status'] ?? 0),
             'durationMs' => (int) ($r['durationMs'] ?? 0),

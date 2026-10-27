@@ -1,0 +1,19 @@
+[
+  {
+    "cidr": "192.0.2.174",
+    "source": "db",
+    "comment": "Office device",
+    "addedBy": "admin@example.invalid",
+    "country": "PH",
+    "city": "Example City",
+    "domain": null,
+    "expiresAt": null
+  },
+  {
+    "cidr": "2001:db8:11:21::10",
+    "source": "builtin",
+    "comment": "Monitoring probe - IPv6",
+    "addedAt": "2026-09-17T18:17:12.341Z",
+    "expiresAt": "2026-11-03T17:28:26.885Z"
+  }
+]

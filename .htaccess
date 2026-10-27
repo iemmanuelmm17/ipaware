@@ -11,7 +11,7 @@ DirectoryIndex index.php index.html
 <IfModule mod_rewrite.c>
     RewriteEngine On
     # Block direct access to private directories and source files.
-    RewriteRule ^(src|data|dev|templates|assets)/ - [F,L,NC]
+    RewriteRule ^(src|data|dev|tests|templates|assets)/ - [F,L,NC]
     RewriteRule ^(.*/)?\. - [F,L]
 </IfModule>
 

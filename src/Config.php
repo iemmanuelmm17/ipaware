@@ -107,18 +107,36 @@ final class Config
         return Support::int($this->vars[$key] ?? null, $default, $min, $max);
     }
 
-    public function mode(): string
+    public function mode(?string $effectiveBaseUrl = null): string
     {
         $mode = strtolower((string) $this->get('APP_MODE', 'auto'));
         if ($mode === 'auto') {
-            return trim((string) $this->get('API_BASE_URL', '')) !== '' ? 'live' : 'demo';
+            $base = $effectiveBaseUrl ?? (string) $this->get('API_BASE_URL', '');
+            return trim($base) !== '' ? 'live' : 'demo';
         }
         return in_array($mode, ['demo', 'live'], true) ? $mode : 'demo';
     }
 
-    public function isDemo(): bool
+    public function isDemo(?string $effectiveBaseUrl = null): bool
     {
-        return $this->mode() === 'demo';
+        return $this->mode($effectiveBaseUrl) === 'demo';
+    }
+
+    /** The built-in development server can be single-worker; SSE would monopolize it. */
+    public function sseDisabledReason(): ?string
+    {
+        if (!$this->bool('SSE_ENABLED', true)) {
+            return 'Disabled by SSE_ENABLED in configuration.';
+        }
+        if (PHP_SAPI === 'cli-server') {
+            return "Disabled on PHP's built-in development server to keep requests responsive. Use auto-refresh instead.";
+        }
+        return null;
+    }
+
+    public function sseEnabled(): bool
+    {
+        return $this->sseDisabledReason() === null;
     }
 
     public function isHttps(): bool
@@ -161,18 +179,18 @@ final class Config
     /** @return array<string,mixed> safe, non-secret values for the browser */
     public function publicValues(?string $serverOverride, ?string $keySource): array
     {
-        $base = $serverOverride !== null && $serverOverride !== ''
-            ? $serverOverride
-            : (string) $this->get('API_BASE_URL', '');
+        $overrideAllowed = $this->bool('ALLOW_RUNTIME_SERVER_OVERRIDE', true);
+        $overridden = $overrideAllowed && $serverOverride !== null && $serverOverride !== '';
+        $base = $overridden ? $serverOverride : (string) $this->get('API_BASE_URL', '');
         return [
             'appName' => (string) $this->get('APP_NAME', 'IPAware Console'),
             'version' => self::VERSION,
-            'mode' => $this->mode(),
-            'demo' => $this->isDemo(),
+            'mode' => $this->mode($base),
+            'demo' => $this->isDemo($base),
             'server' => $base,
-            'serverConfigured' => trim((string) $this->get('API_BASE_URL', '')) !== '',
-            'serverOverridden' => $serverOverride !== null && $serverOverride !== '',
-            'runtimeServerOverrideAllowed' => $this->bool('ALLOW_RUNTIME_SERVER_OVERRIDE', true),
+            'serverConfigured' => trim($base) !== '',
+            'serverOverridden' => $overridden,
+            'runtimeServerOverrideAllowed' => $overrideAllowed,
             'keySource' => $keySource ?? 'none',
             'hasApiKey' => $keySource !== 'none',
             'authScheme' => (string) $this->get('AUTH_SCHEME', 'Bearer'),
@@ -187,7 +205,8 @@ final class Config
             ],
             'writeParamsMode' => (string) $this->get('WRITE_PARAMS_MODE', 'query'),
             'allowlistDeleteMethod' => strtoupper((string) $this->get('ALLOWLIST_DELETE_METHOD', 'DELETE')),
-            'sseEnabled' => $this->bool('SSE_ENABLED', true),
+            'sseEnabled' => $this->sseEnabled(),
+            'sseDisabledReason' => $this->sseDisabledReason(),
             'pollSeconds' => $this->int('SSE_POLL_SECONDS', 8, 3, 120),
             'sseMaxSeconds' => $this->int('SSE_MAX_SECONDS', 300, 30, 3600),
             'minAutoRefresh' => $this->int('MIN_AUTO_REFRESH', 10, 5, 300),

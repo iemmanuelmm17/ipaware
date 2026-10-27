@@ -74,7 +74,9 @@ export function renderTable(container, options = {}) {
         .filter((action) => !action.visible || action.visible(row))
         .map((action) => `<button class="icon-btn ${action.className || ''}" type="button" data-action="${escape(action.id)}" data-index="${index}" title="${escape(action.title || action.label)}" aria-label="${escape(action.title || action.label)}"><svg class="icon"><use href="#i-${escape(action.icon)}"></use></svg></button>`)
         .join('');
-      const clickable = onRowClick ? ' class="is-clickable" tabindex="0" title="Click for full details"' : '';
+      const clickable = onRowClick
+        ? ` class="is-clickable" tabindex="0" aria-label="View details for ${escape(row.ip || 'this address')}" aria-keyshortcuts="Enter Space" title="Click for full details"`
+        : '';
       return `<tr data-index="${index}"${clickable}>${cells}${actions.length ? `<td class="col-actions"><span class="row-actions">${buttons}</span></td>` : ''}</tr>`;
     }).join('')}</tbody></table>`;
     const nodes = Array.from(fragment.querySelector('tbody').children);
@@ -120,9 +122,12 @@ export function renderTable(container, options = {}) {
 
   if (onRowClick) {
     container._tableKeyHandler = (event) => {
-      if (event.key !== 'Enter' || event.target.tagName !== 'TR') return;
+      if (!['Enter', ' '].includes(event.key) || event.target.tagName !== 'TR') return;
       const index = Number(event.target.dataset.index);
-      if (rows[index]) onRowClick(rows[index], event);
+      if (rows[index]) {
+        event.preventDefault();
+        onRowClick(rows[index], event);
+      }
     };
     container.addEventListener('keydown', container._tableKeyHandler);
   }

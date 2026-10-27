@@ -37,20 +37,31 @@ function renderTable(ctx, el, kind) {
   if (count) count.textContent = `${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'}`;
   const q = el.querySelector('[data-q]');
   if (q && q.value !== ctx.store.state.query) q.value = ctx.store.state.query;
+  const listKey = kind === 'blocked' ? 'decisions' : 'allowed_ips';
+  const state = ctx.store.state;
+  const error = state.requestError || state.meta?.errors?.[listKey];
+  const warning = !state.query && state.meta?.lists?.[listKey]?.warning;
+  const loading = state.loading && !state.lastUpdated && !error && !warning;
+  const emptyTitle = error ? 'Upstream list unavailable'
+    : warning ? 'Unrecognized upstream response'
+      : loading ? 'Loading addresses…'
+        : state.query ? 'No matching addresses'
+          : state.lastUpdated ? 'No addresses returned' : 'No matching addresses';
+  const emptyMessage = error || warning || (loading ? 'Waiting for the server to respond.'
+    : state.query ? 'Try another search term.'
+      : state.lastUpdated ? 'The server returned no addresses for this list. Check the server and API key in Settings if you expected entries.'
+        : 'Press Refresh to load data.');
   ctx.table.renderTable(el.querySelector('[data-table]'), {
     rows,
-    columns: ctx.shared.rowColumns(ctx, { showType: kind === 'allowed' }),
+    columns: kind === 'allowed' ? ctx.shared.allowlistColumns(ctx) : ctx.shared.rowColumns(ctx),
     actions: ctx.shared.rowActions(ctx),
     onAction: (id, row) => ctx.shared.handleRowAction(ctx, id, row),
     onRowClick: (row) => ctx.shared.showRecord(ctx, row),
     onSort: (key) => { ctx.store.setSort(key); renderTable(ctx, el, kind); },
     sort: ctx.store.state.sort,
     chunk: ctx.store.state.chunkSize,
-    emptyTitle: ctx.store.state.meta?.errors?.[kind === 'blocked' ? 'decisions' : 'allowed_ips']
-      ? 'Upstream list unavailable'
-      : 'No matching addresses',
-    emptyMessage: ctx.store.state.meta?.errors?.[kind === 'blocked' ? 'decisions' : 'allowed_ips']
-      || (ctx.store.state.query ? 'Try another search term.' : 'Press Refresh to load data.'),
+    emptyTitle,
+    emptyMessage,
     footerNote: 'Rows stream in as you scroll',
   });
 }
@@ -110,7 +121,7 @@ export function createAllowlist(ctx) {
       <section class="card" style="margin-bottom:16px">
         <div class="card-head"><div><h2>Add to allow list</h2><p>POST to ${ctx.ui.escapeHtml(ctx.cfg.endpoints.allowlist)}?cidr=…&amp;comment=…</p></div></div>
         <form class="card-body" data-add-form>
-          <div class="cmd-vars">
+          <div class="form-grid">
             <div class="field"><label for="allow-cidr">IP or CIDR</label><input class="input input--mono" id="allow-cidr" name="cidr" placeholder="37.18.129.253 or 10.0.0.0/24" required></div>
             <div class="field"><label for="allow-comment">Comment</label><input class="input" id="allow-comment" name="comment" placeholder="tango" maxlength="200"></div>
             <div class="field"><label>&nbsp;</label><button class="btn btn--primary" type="submit">${ctx.ui.icon('plus')} Add entry</button></div>

@@ -15,7 +15,7 @@ export function rowColumns(ctx, { showType = false } = {}) {
   columns.push(
     {
       key: 'ip', label: 'IP / CIDR', className: 'col-ip',
-      render: (row, index) => `<button class="text-link" type="button" data-action="lookup" data-index="${index}" title="Look up ${esc(row.ip)}">${esc(row.ip)}</button>`
+      render: (row, index) => `<button class="text-link" type="button" data-action="details" data-index="${index}" title="View details for ${esc(row.ip)}">${esc(row.ip)}</button>`
         + (row.cidr && row.cidr !== row.ip ? `<span class="cell-sub">${esc(row.cidr)}</span>` : ''),
     },
     {
@@ -33,6 +33,25 @@ export function rowColumns(ctx, { showType = false } = {}) {
     },
   );
   return columns;
+}
+
+/** The allow list contains different fields from firewall decisions. */
+export function allowlistColumns(ctx) {
+  const { escapeHtml: esc, fmtDate } = ctx.ui;
+  const text = (value) => value === null || value === undefined || value === ''
+    ? '<span class="muted">—</span>' : esc(value);
+  const date = (value) => `<span class="nowrap">${esc(fmtDate(value))}</span>`;
+  return [
+    rowColumns(ctx)[0],
+    { key: 'source', label: 'Source', render: (row) => text(row.source) },
+    { key: 'comment', label: 'Comment', className: 'col-explanation', render: (row) => text(row.comment) },
+    { key: 'addedBy', label: 'Added by', render: (row) => text(row.addedBy ?? row.raw?.addedBy ?? row.raw?.created_by) },
+    { key: 'country', label: 'Country', render: (row) => text(row.country ?? row.raw?.country) },
+    { key: 'city', label: 'City', render: (row) => text(row.city ?? row.raw?.city) },
+    { key: 'domain', label: 'Domain', render: (row) => text(row.domain ?? row.raw?.domain) },
+    { key: 'created', label: 'Added', render: (row) => date(row.created) },
+    { key: 'expires', label: 'Expires', render: (row) => date(row.expires) },
+  ];
 }
 
 export function rowActions(ctx) {
@@ -65,6 +84,12 @@ export function showRecord(ctx, row) {
       ['Source', row.source || row.origin],
       ['Scenario', row.scenario],
       ['Comment', row.comment],
+      ...(allowed ? [
+        ['Added by', row.addedBy || record.addedBy || record.added_by || record.created_by],
+        ['Country', row.country || record.country],
+        ['City', row.city || record.city],
+        ['Domain', Object.prototype.hasOwnProperty.call(record, 'domain') ? record.domain : row.domain],
+      ] : []),
       ['Record ID', row.id],
     ],
     record,

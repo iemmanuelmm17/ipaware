@@ -10,7 +10,7 @@ declare(strict_types=1);
 $app = require __DIR__ . '/src/bootstrap.php';
 $app->guard->enforce('json');
 
-if (!$app->config->bool('SSE_ENABLED', true)) {
+if (!$app->config->sseEnabled()) {
     http_response_code(204);
     exit;
 }

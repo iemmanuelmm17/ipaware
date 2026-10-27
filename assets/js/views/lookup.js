@@ -11,6 +11,25 @@ function remember(ip) {
   return next;
 }
 
+/** Show every upstream field, grouping top-level objects into readable cards. */
+export function renderLookupSections(ui, record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return '';
+  const entries = Object.entries(record);
+  const groups = entries.filter(([, value]) => value !== null && typeof value === 'object'
+    && !Array.isArray(value) && Object.keys(value).length > 0);
+  const fields = Object.fromEntries(entries.filter(([, value]) => value === null || typeof value !== 'object'
+    || Array.isArray(value) || Object.keys(value).length === 0));
+  const section = (title, value) => `<section class="card lookup-section">
+    <div class="card-head"><h2>${ui.escapeHtml(title)}</h2></div>
+    <div class="card-body">${ui.renderRecordFields(value)}</div>
+  </section>`;
+  const content = [
+    ...(Object.keys(fields).length ? [section('Address information', fields)] : []),
+    ...groups.map(([key, value]) => section(ui.humanizeKey(key), value)),
+  ];
+  return content.length ? `<div class="lookup-sections" data-lookup-details>${content.join('')}</div>` : '';
+}
+
 export function create(ctx) {
   let el = null;
   let result = null;
@@ -49,7 +68,6 @@ export function create(ctx) {
         if (id === 'unblock') return ctx.actions.unblock(result.ip);
         if (id === 'allow') return ctx.actions.allow(result.ip);
         if (id === 'raw') return ctx.ui.jsonDialog(`Raw response — ${result.ip}`, raw);
-        if (id === 'cmd') return ctx.navigate('commands', { ip: result.ip });
       }
     });
     if (ctx.pendingLookup) {
@@ -107,19 +125,23 @@ export function create(ctx) {
 
     const verdict = String(result.verdict || 'unknown').toLowerCase();
     const verdictTone = { blocked: 'red', allowed: 'green', clean: 'blue' }[verdict] || 'muted';
+    const text = (value) => ui.escapeHtml(value === null || value === undefined || value === '' ? '—' : value);
+    const yesNo = (value, yesTone) => value === true ? ui.badge('Yes', yesTone)
+      : value === false ? ui.badge('No', 'muted') : ui.badge('Unknown', 'muted');
+    const active = result.activeDecision === undefined ? (result.decision ? true : null) : result.activeDecision;
     const details = [
       ['Verdict', ui.badge(verdict.toUpperCase(), verdictTone)],
-      ['Status', result.status || '—'],
-      ['Reason', result.reason || '—'],
-      ['Scenario', result.scenario || '—'],
-      ['First seen', ui.fmtDate(result.firstSeen)],
-      ['Last seen', ui.fmtDate(result.lastSeen)],
-      ['Expires', ui.fmtDate(result.expires)],
-      ['Country', result.country || '—'],
-      ['ASN', result.asn || '—'],
-      ['Organisation', result.org || '—'],
-      ['Allow-listed', result.allowlisted ? ui.badge('Yes', 'green') : ui.badge('No', 'muted')],
-      ['Active decision', result.decision ? ui.badge('Yes', 'red') : ui.badge('No', 'muted')],
+      ['Status', text(result.status)],
+      ['Reason', text(result.reason)],
+      ['Scenario', text(result.scenario)],
+      ['First seen', text(ui.fmtDate(result.firstSeen))],
+      ['Last seen', text(ui.fmtDate(result.lastSeen))],
+      ['Expires', text(ui.fmtDate(result.expires))],
+      ['Country', text(result.country)],
+      ['ASN', text(result.asn)],
+      ['Organisation', text(result.org)],
+      ['Allow-listed', yesNo(result.allowlisted, 'green')],
+      ['Active decision', yesNo(active, 'red')],
     ];
     host.innerHTML = `
       <section class="card">
@@ -129,7 +151,6 @@ export function create(ctx) {
           ${ui.badge(verdict.toUpperCase(), verdictTone)}
           <span class="spacer"></span>
           <div class="row">
-            <button class="btn btn--xs" type="button" data-lookup-action="cmd">${ui.icon('terminal')} Commands</button>
             <button class="btn btn--xs" type="button" data-lookup-action="raw">${ui.icon('file')} Raw JSON</button>
             <button class="btn btn--xs" type="button" data-lookup-action="allow">${ui.icon('check-circle')} Allow list</button>
             <button class="btn btn--xs" type="button" data-lookup-action="unblock">${ui.icon('unlock')} Release</button>
@@ -138,14 +159,13 @@ export function create(ctx) {
         </div>
         <dl class="detail-grid">${details.map(([k, v]) => `<div><dt>${ui.escapeHtml(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>
       </section>
-      <section class="card" style="margin-top:16px">
-        <div class="card-head"><div><h2>Signals &amp; history</h2><p>Returned by the upstream for this address</p></div></div>
-        <div class="timeline">${(result.events || []).length
-          ? result.events.map((e) => `<div class="timeline-item sev-info"><span class="marker"></span>
-              <div><div class="msg">${ui.escapeHtml(e.message || e.type || 'Event')}</div>
-              <div class="meta"><span>${ui.escapeHtml(e.type || 'signal')}</span><span>${ui.escapeHtml(ui.fmtDate(e.ts || e.time))}</span></div></div></div>`).join('')
-          : ui.emptyState('No signals', 'The upstream did not return any history for this IP.', 'activity')}</div>
-      </section>`;
+      ${renderLookupSections(ui, raw)}
+      ${(result.events || []).length ? `<section class="card" style="margin-top:16px">
+        <div class="card-head"><div><h2>Recent signals</h2><p>Events returned by the upstream for this address</p></div></div>
+        <div class="timeline">${result.events.map((e) => `<div class="timeline-item sev-info"><span class="marker"></span>
+          <div><div class="msg">${ui.escapeHtml(e.message || e.type || 'Event')}</div>
+          <div class="meta"><span>${ui.escapeHtml(e.type || 'signal')}</span><span>${ui.escapeHtml(ui.fmtDate(e.ts || e.time))}</span></div></div></div>`).join('')}</div>
+      </section>` : ''}`;
   }
 
   return { mount, update: render, lookup: doLookup };
